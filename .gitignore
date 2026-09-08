@@ -1,0 +1,37 @@
+# Datos persistentes de PostgreSQL
+/volumes/postgres/
+
+# Dependencias de Laravel
+/app/vendor/
+/app/node_modules/
+
+# Entorno Laravel
+/app/.env
+/app/.env.backup
+/app/.phpunit.result.cache
+
+# Laravel: cachés, logs y storage generado
+/app/bootstrap/cache/*
+!/app/bootstrap/cache/.gitkeep
+/app/storage/*.key
+/app/storage/app/*
+!/app/storage/app/public
+/app/storage/framework/cache/*
+/app/storage/framework/sessions/*
+/app/storage/framework/testing/*
+/app/storage/framework/views/*
+!/app/storage/framework/cache/.gitkeep
+!/app/storage/framework/sessions/.gitkeep
+!/app/storage/framework/testing/.gitkeep
+!/app/storage/framework/views/.gitkeep
+/app/storage/logs/*
+!/app/storage/logs/.gitkeep
+/app/public/hot
+/app/public/storage
+/app/public/build/
+
+# IDE / SO
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

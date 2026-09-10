@@ -3,10 +3,6 @@
 @section('title', 'Mis incidencias')
 
 @section('content')
-    <nav aria-label="ruta" class="mb-3">
-        <a href="{{ route('panel.socio') }}" class="volver-link">&larr; Volver al panel</a>
-    </nav>
-
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
             <h1 class="page-title h4 mb-0">Mis incidencias</h1>
@@ -20,14 +16,6 @@
     @endif
     @if (session('error'))
         <div class="alert alert-danger" role="alert">{{ session('error') }}</div>
-    @endif
-
-    @if ($procesando)
-        <div class="alert alert-asignacion d-flex align-items-center gap-2" role="status">
-            <span class="spinner" aria-hidden="true"></span>
-            Simulación en curso: el club está gestionando una de sus incidencias
-            (asignación de responsable y resolución). La lista se actualiza sola.
-        </div>
     @endif
 
     @include('incidencias.partials.filtros', ['action' => route('incidencias.index'), 'estados' => $estados])
@@ -59,7 +47,6 @@
                             <th>Ubicación</th>
                             <th>Fecha del hecho</th>
                             <th>Descripción</th>
-                            <th>Criticidad</th>
                             <th>Estado / Responsable</th>
                             <th class="text-end">Acciones</th>
                         </tr>
@@ -73,11 +60,6 @@
                                 <td>{{ $incidencia->ubicacion->nombre }}</td>
                                 <td class="text-nowrap">{{ $incidencia->fecha_hora_evento->format('d/m/Y H:i') }}</td>
                                 <td class="celda-descripcion">{{ $incidencia->descripcion }}</td>
-                                <td>
-                                    <span class="badge crit-badge crit-{{ Str::slug($incidencia->criticidad?->nombre ?? 'Normal') }}">
-                                        {{ $incidencia->criticidad?->nombre ?? 'Normal' }}
-                                    </span>
-                                </td>
                                 <td>
                                     @include('incidencias.partials.estado-badge', ['nombre' => $incidencia->estado->nombre])
                                     <div class="mini-responsable">
@@ -111,12 +93,6 @@
                         <dt>Tipo</dt><dd>{{ $incidencia->tipo->nombre }}</dd>
                         <dt>Ubicación</dt><dd>{{ $incidencia->ubicacion->nombre }}</dd>
                         <dt>Fecha del hecho</dt><dd>{{ $incidencia->fecha_hora_evento->format('d/m/Y H:i') }}</dd>
-                        <dt>Criticidad</dt>
-                        <dd>
-                            <span class="badge crit-badge crit-{{ Str::slug($incidencia->criticidad?->nombre ?? 'Normal') }}">
-                                {{ $incidencia->criticidad?->nombre ?? 'Normal' }}
-                            </span>
-                        </dd>
                         <dt>Responsable</dt>
                         <dd>
                             @if ($resp)
@@ -134,37 +110,6 @@
             @endforeach
         </div>
     @endif
-
-    {{-- ================= Modal: confirmación de acción ================= --}}
-    <div class="modal fade" id="modalConfirmar" tabindex="-1" aria-labelledby="modalConfirmarTitulo" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2 class="modal-title h6" id="modalConfirmarTitulo">Confirmar</h2>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-                </div>
-                <div class="modal-body">
-                    <p id="modalConfirmarPregunta" class="mb-3">¿Desea confirmar la acción?</p>
-                    <dl class="datos-modal">
-                        <dt>N.º</dt><dd id="mcNumero">—</dd>
-                        <dt>Tipo</dt><dd id="mcTipo">—</dd>
-                        <dt>Ubicación</dt><dd id="mcUbicacion">—</dd>
-                        <dt>Fecha del hecho</dt><dd id="mcFechaEvento">—</dd>
-                        <dt>Descripción</dt><dd id="mcDescripcion">—</dd>
-                        <dt>Criticidad</dt><dd id="mcCriticidad">—</dd>
-                        <dt>Estado actual</dt><dd id="mcEstado">—</dd>
-                    </dl>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" id="btnDescartarModal" class="btn btn-outline-trebol" data-bs-dismiss="modal">No confirmar ahora</button>
-                    <form id="formConfirmar" method="POST" class="d-inline">
-                        @csrf
-                        <button type="submit" id="btnConfirmarAccion" class="btn btn-trebol">Confirmar</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
 
     {{-- ================= Modal: historial de estados ================= --}}
     <div class="modal fade" id="modalHistorial" tabindex="-1" aria-labelledby="modalHistorialTitulo" aria-hidden="true">
@@ -184,55 +129,37 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="modalCancelarIncidencia" tabindex="-1"
+         aria-labelledby="modalCancelarIncidenciaTitulo" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <form id="formCancelarIncidencia" method="POST" data-conectividad-skip>
+                @csrf
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 class="modal-title h6" id="modalCancelarIncidenciaTitulo">Cancelar incidencia</h2>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p id="cancelarIncidenciaAyuda" class="mb-3"></p>
+                        <label for="comentarioCancelacion" class="form-label">Motivo de la cancelación</label>
+                        <textarea id="comentarioCancelacion" name="comentario_cancelacion" class="form-control"
+                                  rows="4" maxlength="200" required aria-describedby="ayudaComentarioCancelacion"></textarea>
+                        <div id="ayudaComentarioCancelacion" class="form-text">Obligatorio. Máximo 200 caracteres.</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-trebol" data-bs-dismiss="modal">Volver</button>
+                        <button type="submit" class="btn btn-danger">Confirmar cancelación</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
 <script>
 (function () {
-    // ---------- Modal de confirmación (rellena datos + destino del form) ----------
-    var modalConfirmar = document.getElementById('modalConfirmar');
-    var formConfirmar = document.getElementById('formConfirmar');
-    var btnConfirmar = document.getElementById('btnConfirmarAccion');
-    var btnDescartar = document.getElementById('btnDescartarModal');
-
-    function pintarConfirmacion(d) {
-        document.getElementById('modalConfirmarTitulo').textContent = d.titulo || 'Confirmar';
-        document.getElementById('modalConfirmarPregunta').textContent = d.pregunta || '¿Desea confirmar la acción?';
-        document.getElementById('mcNumero').textContent = '#' + (d.numero || '');
-        document.getElementById('mcTipo').textContent = d.tipo || '—';
-        document.getElementById('mcUbicacion').textContent = d.ubicacion || '—';
-        document.getElementById('mcFechaEvento').textContent = d.fechaEvento || '—';
-        document.getElementById('mcDescripcion').textContent = d.descripcion || '—';
-        document.getElementById('mcCriticidad').textContent = d.criticidad || '—';
-        document.getElementById('mcEstado').textContent = d.estado || '—';
-        formConfirmar.setAttribute('action', d.accion || '');
-        btnConfirmar.textContent = d.confirmarLabel || 'Confirmar';
-        btnConfirmar.className = 'btn ' + (d.confirmarClase || 'btn-trebol');
-        btnDescartar.textContent = d.descartarLabel || 'No confirmar ahora';
-    }
-
-    if (modalConfirmar) {
-        modalConfirmar.addEventListener('show.bs.modal', function (event) {
-            var t = event.relatedTarget;
-            if (!t) return;
-            pintarConfirmacion({
-                titulo: t.getAttribute('data-titulo'),
-                pregunta: t.getAttribute('data-pregunta'),
-                accion: t.getAttribute('data-accion'),
-                confirmarLabel: t.getAttribute('data-confirmar-label'),
-                confirmarClase: t.getAttribute('data-confirmar-clase'),
-                descartarLabel: t.getAttribute('data-descartar-label'),
-                numero: t.getAttribute('data-numero'),
-                tipo: t.getAttribute('data-tipo'),
-                ubicacion: t.getAttribute('data-ubicacion'),
-                fechaEvento: t.getAttribute('data-fecha-evento'),
-                descripcion: t.getAttribute('data-descripcion'),
-                criticidad: t.getAttribute('data-criticidad'),
-                estado: t.getAttribute('data-estado'),
-            });
-        });
-    }
-
     // ---------- Modal de historial (carga por fetch) ----------
     var modalHistorial = document.getElementById('modalHistorial');
     if (modalHistorial) {
@@ -272,15 +199,33 @@
         });
     }
 
+    // ---------- Modal de cancelación ----------
+    var modalCancelar = document.getElementById('modalCancelarIncidencia');
+    if (modalCancelar) {
+        modalCancelar.addEventListener('show.bs.modal', function (event) {
+            var activador = event.relatedTarget;
+            if (!activador) return;
+
+            var formulario = document.getElementById('formCancelarIncidencia');
+            var comentario = document.getElementById('comentarioCancelacion');
+            var numero = activador.getAttribute('data-numero');
+
+            formulario.action = activador.getAttribute('data-cancelar-url');
+            comentario.value = '';
+            document.getElementById('cancelarIncidenciaAyuda').textContent =
+                '¿Desea cancelar la incidencia #' + numero + '? Esta acción cambiará su estado a Cancelada.';
+        });
+
+        modalCancelar.addEventListener('shown.bs.modal', function () {
+            document.getElementById('comentarioCancelacion').focus();
+        });
+    }
+
     // ---------- Tooltips de los botones-icono de acciones ----------
     document.querySelectorAll('[data-tooltip][title]').forEach(function (el) {
         new bootstrap.Tooltip(el, { trigger: 'hover', container: 'body' });
     });
 
-    // ---------- Autorefresco mientras hay una simulación en curso ----------
-    @if ($procesando)
-    setTimeout(function () { window.location.reload(); }, 11000);
-    @endif
 })();
 </script>
 @endpush

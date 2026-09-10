@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Incidencia;
 use Illuminate\View\View;
 
 /**
@@ -17,6 +18,9 @@ class PanelController extends Controller
     {
         return view('panel.socio', [
             'usuario' => session('usuario'),
+            'incidenciasEnProceso' => Incidencia::where('id_usuario', session('usuario.id'))
+                ->where('id_estado_incidencia', Incidencia::ESTADO_EN_PROCESO)
+                ->count(),
         ]);
     }
 

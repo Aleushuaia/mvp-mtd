@@ -7,12 +7,9 @@
      - la navegación de los enlaces marcados con data-conectividad
        (botones "Nueva incidencia", "Mis incidencias", etc.).
 
-   Antes de continuar comprueba la conexión:
-     - navigator.onLine === false        -> banner de fallo directo.
-     - "ping" a /up que tarda > 3 s      -> banner de conexión lenta.
-     - "ping" que falla / da timeout     -> banner de fallo.
-     - "ping" OK                         -> se realiza la acción
-       (envío nativo del form / navegación al enlace).
+   Antes de continuar comprueba únicamente el estado de conexión que
+   informa el navegador. No realiza solicitudes previas al backend, para
+   que la acción se ejecute sin una espera adicional.
 
    El banner de fallo ofrece "Reintentar" y "Solicitar ayuda"
    (acercarse a la recepción del club).
@@ -22,12 +19,6 @@
    ============================================================ */
 (function () {
     'use strict';
-
-    var LENTO_MS = 3000;
-    var PING_TIMEOUT_MS = 8000;
-
-    var metaProbe = document.querySelector('meta[name="probe-url"]');
-    var PING_URL = metaProbe ? metaProbe.getAttribute('content') : '/up';
 
     // ---------- Contenedor fijo de avisos ----------
     var box = document.getElementById('avisoConectividad');
@@ -45,21 +36,6 @@
     function pintar(html) {
         box.innerHTML = html;
         box.classList.add('is-visible');
-    }
-
-    function mostrarLento() {
-        pintar(
-            '<div class="alert alert-warning banner-red mb-0" role="status">' +
-                '<div class="banner-red__texto">' +
-                    '<strong>La conexión está muy lenta.</strong> ' +
-                    'Seguimos intentando completar la operación. Si no responde, te recomendamos ' +
-                    'acercarte a la recepción del club para usar la red WiFi del lugar o solicitar asistencia.' +
-                '</div>' +
-                '<button type="button" class="btn btn-sm btn-outline-dark banner-red__btn" data-cerrar>Entendido</button>' +
-            '</div>'
-        );
-        var b = box.querySelector('[data-cerrar]');
-        if (b) b.addEventListener('click', limpiar);
     }
 
     function mostrarAyuda() {
@@ -98,47 +74,18 @@
 
     // API para otros scripts (p. ej. borrador-incidencia.js)
     window.AvisoConectividad = {
-        mostrarLento: mostrarLento,
         mostrarFallo: mostrarFallo,
         mostrarAyuda: mostrarAyuda,
         limpiar: limpiar
     };
 
-    // ---------- Comprobación de conexión (ping a /up) ----------
-    function conPing(alExito, alFallo) {
-        // 1) El navegador ya sabe que no hay conexión.
+    // ---------- Comprobación inmediata de conexión ----------
+    function verificarConexion(alExito, alFallo) {
         if (navigator.onLine === false) {
             alFallo();
             return;
         }
-
-        // 2) Ping al backend.
-        var lentoId = setTimeout(mostrarLento, LENTO_MS);
-        var ctrl = ('AbortController' in window) ? new AbortController() : null;
-        var timeoutId = setTimeout(function () {
-            if (ctrl) { try { ctrl.abort(); } catch (e) { /* no-op */ } }
-        }, PING_TIMEOUT_MS);
-        var fin = function () {
-            clearTimeout(lentoId);
-            clearTimeout(timeoutId);
-        };
-
-        fetch(PING_URL, {
-            method: 'GET',
-            cache: 'no-store',
-            credentials: 'same-origin',
-            headers: { 'Accept': 'text/plain' },
-            signal: ctrl ? ctrl.signal : undefined
-        })
-            .then(function (resp) {
-                fin();
-                if (!resp || !resp.ok) { throw new Error('ping-fallido'); }
-                alExito();
-            })
-            .catch(function () {
-                fin();
-                alFallo();
-            });
+        alExito();
     }
 
     // ---------- Formularios POST ----------
@@ -151,7 +98,7 @@
         var btn = botonEnvio(form);
         if (btn) btn.disabled = true;
 
-        conPing(
+        verificarConexion(
             function () { limpiar(); form.submit(); },
             function () {
                 if (btn) btn.disabled = false;
@@ -163,7 +110,7 @@
     // ---------- Enlaces de navegación marcados ----------
     function probarYNavegar(href) {
         limpiar();
-        conPing(
+        verificarConexion(
             function () { limpiar(); window.location.assign(href); },
             function () { mostrarFallo(function () { probarYNavegar(href); }); }
         );

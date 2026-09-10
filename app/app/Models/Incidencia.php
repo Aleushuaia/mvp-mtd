@@ -4,8 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
@@ -29,10 +29,15 @@ class Incidencia extends Model
 
     /** Estados (coinciden con estados_incidencia.id_estado / EstadoIncidenciaSeeder). */
     public const ESTADO_BORRADOR = 1;
+
     public const ESTADO_PENDIENTE = 2;
+
     public const ESTADO_CONFIRMADA = 3;
+
     public const ESTADO_EN_PROCESO = 4;
+
     public const ESTADO_RESUELTA = 5;
+
     public const ESTADO_CANCELADA = 6;
 
     /** Criticidad por defecto de una incidencia nueva. */
@@ -93,36 +98,47 @@ class Incidencia extends Model
         return $this->responsables()->exists();
     }
 
-    public function estaPendiente(): bool
+    public function estaBorrador(): bool
     {
-        return (int) $this->id_estado_incidencia === self::ESTADO_PENDIENTE;
+        return (int) $this->id_estado_incidencia === self::ESTADO_BORRADOR;
     }
 
-    public function sePuedeCancelar(): bool
+    public function estaEnProceso(): bool
     {
-        return in_array((int) $this->id_estado_incidencia, [self::ESTADO_PENDIENTE, self::ESTADO_CONFIRMADA], true);
+        return (int) $this->id_estado_incidencia === self::ESTADO_EN_PROCESO;
     }
 
     /** El operador puede editar criticidad y responsables sólo con la incidencia activa. */
     public function esGestionablePorOperador(): bool
     {
-        return in_array((int) $this->id_estado_incidencia, [self::ESTADO_CONFIRMADA, self::ESTADO_EN_PROCESO], true);
+        return $this->estaEnProceso();
     }
 
     /**
      * Filtro compartido (Mis incidencias / panel del operador):
-     * por N.º de incidencia, texto de descripción y estado.
+     * por N.º, texto de descripción y estado.
      *
-     * @param  array{numero?:mixed, descripcion?:mixed, estado?:mixed}  $filtros
+     * @param  array{numero?:mixed, descripcion?:mixed, estado?:array<int, mixed>|mixed}  $filtros
      */
     public function scopeFiltrar(Builder $query, array $filtros): Builder
     {
+        $estadoRecibido = $filtros['estado'] ?? [];
+        $estados = collect(is_array($estadoRecibido) ? $estadoRecibido : [$estadoRecibido])
+            ->filter(fn (mixed $estado): bool => is_numeric($estado))
+            ->map(fn (mixed $estado): int => (int) $estado)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($estados === []) {
+            $estados = [self::ESTADO_EN_PROCESO];
+        }
+
         return $query
             ->when(filled($filtros['numero'] ?? null),
                 fn (Builder $q) => $q->where('id_incidencia', (int) $filtros['numero']))
             ->when(filled($filtros['descripcion'] ?? null),
                 fn (Builder $q) => $q->where('descripcion', 'ilike', '%'.trim((string) $filtros['descripcion']).'%'))
-            ->when(filled($filtros['estado'] ?? null),
-                fn (Builder $q) => $q->where('id_estado_incidencia', (int) $filtros['estado']));
+            ->whereIn('id_estado_incidencia', $estados);
     }
 }

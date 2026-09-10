@@ -14,8 +14,9 @@ class Simulador
 {
     /** @var list<class-string<Simulacion>> */
     private array $simulaciones = [
-        SimuladorAsignaciones::class,  // Confirmada -> En proceso (asigna responsable)
-        SimuladorResoluciones::class,  // En proceso -> Resuelta (cierra la incidencia)
+        SimuladorRevisionPendientes::class,
+        SimuladorAsignaciones::class,
+        SimuladorResoluciones::class,
     ];
 
     public function __construct(private readonly Container $app) {}

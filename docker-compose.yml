@@ -7,6 +7,10 @@ services:
     working_dir: /var/www/html
     volumes:
       - ./app:/var/www/html
+      # Las dependencias de PHP contienen miles de archivos. Mantenerlas en
+      # un volumen Docker evita la latencia del montaje de Windows, mientras
+      # el código de ./app sigue disponible para editar desde el IDE.
+      - laravel_vendor:/var/www/html/vendor
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,3 +54,6 @@ services:
 networks:
   mvp:
     driver: bridge
+
+volumes:
+  laravel_vendor:

@@ -1,13 +1,12 @@
 /* ============================================================
    Borrador de incidencia en el navegador (JS vanilla)
    ------------------------------------------------------------
-   - Autoguardado en localStorage con debounce (~400 ms).
+   - Autoguardado en localStorage al cambiar un campo o al salir de la página.
    - Independiente del backend: si PHP no responde, el borrador
-     queda intacto. Sólo se borra tras un HTTP ok confirmado.
-   - Al abrir el formulario, si hay borrador -> modal para
+     queda intacto. Se borra tras un HTTP ok confirmado o al descartar la edición.
+   - Al crear una nueva incidencia, si hay borrador -> modal para
      "Continuar borrador" o "Empezar en blanco".
    - Envío por fetch + AbortController:
-       * ~3 s sin respuesta -> banner de conexión lenta (no bloqueante).
        * error de red / offline -> banner de fallo, borrador a salvo,
          botón "Reintentar".
    ============================================================ */
@@ -20,8 +19,6 @@
     var STORAGE_KEY = form.getAttribute('data-borrador-key') || 'borrador_incidencia_v1';
     var INDEX_URL = form.getAttribute('data-index-url') || '/incidencias';
     var CAMPOS = ['id_tipo_incidencia', 'id_ubicacion', 'fecha_hora_evento', 'descripcion'];
-    var DEBOUNCE_MS = 400;
-    var LENTO_MS = 3000;
 
     var bannersBox = document.getElementById('bannersIncidencia');
     var btnGuardar = document.getElementById('btnGuardarIncidencia');
@@ -53,39 +50,36 @@
         return !!(data.id_tipo_incidencia || data.id_ubicacion || (data.descripcion && data.descripcion.trim()));
     }
 
-    // -------------------- Autoguardado con debounce --------------------
+    // -------------------- Autoguardado --------------------
     // Cuando el backend confirma el guardado, se bloquea todo autoguardado
     // posterior: así el borrador borrado NO se vuelve a escribir mientras la
-    // página navega (pagehide / visibilitychange / debounce pendiente).
+    // página navega (pagehide / visibilitychange).
     var guardadoConfirmado = false;
-    var debounceId = null;
+    var borradorDescartado = false;
 
-    function programarGuardado() {
-        if (guardadoConfirmado) return;
-        clearTimeout(debounceId);
-        debounceId = setTimeout(function () {
-            if (guardadoConfirmado) return;
-            var data = leerFormulario();
-            if (tieneContenido(data)) {
-                escribirAlmacen({ data: data, savedAt: new Date().toISOString() });
-            } else {
-                borrarBorrador();
-            }
-        }, DEBOUNCE_MS);
-    }
     function guardarAhora() {
-        if (guardadoConfirmado) return;
-        clearTimeout(debounceId);
+        if (guardadoConfirmado || borradorDescartado) return;
         var data = leerFormulario();
         if (tieneContenido(data)) {
             escribirAlmacen({ data: data, savedAt: new Date().toISOString() });
+        } else {
+            borrarBorrador();
         }
     }
 
-    form.addEventListener('input', programarGuardado);
-    form.addEventListener('change', programarGuardado);
+    form.addEventListener('change', guardarAhora);
 
-    // Flush inmediato al salir/ocultar la página (por si el debounce no llegó a disparar).
+    var btnCancelar = form.querySelector('[data-descartar-borrador]');
+    if (btnCancelar) {
+        btnCancelar.addEventListener('click', function () {
+            borradorDescartado = true;
+            borrarBorrador();
+            form.reset();
+            sincronizarContador();
+        });
+    }
+
+    // Guardado inmediato al salir u ocultar la página.
     window.addEventListener('pagehide', guardarAhora);
     document.addEventListener('visibilitychange', function () {
         if (document.visibilityState === 'hidden') guardarAhora();
@@ -170,36 +164,15 @@
         modal.show();
     }
 
-    var borradorInicial = leerAlmacen();
-    if (borradorInicial && tieneContenido(borradorInicial.data)) {
-        ofrecerBorrador(borradorInicial);
+    if (form.getAttribute('data-ofrecer-borrador') === 'true') {
+        var borradorInicial = leerAlmacen();
+        if (borradorInicial && tieneContenido(borradorInicial.data)) {
+            ofrecerBorrador(borradorInicial);
+        }
     }
 
     // -------------------- Banners --------------------
     function limpiarBanners() { if (bannersBox) bannersBox.innerHTML = ''; }
-
-    function bannerLento() {
-        if (!bannersBox) return;
-        limpiarBanners();
-        var el = document.createElement('div');
-        el.className = 'alert alert-warning banner-red';
-        el.setAttribute('role', 'status');
-        el.innerHTML =
-            '<div class="banner-red__texto">' +
-                '<strong>Tu conexión está muy lenta.</strong> ' +
-                'Te recomendamos acercarte a la recepción del club para conectarte a la red WiFi del lugar, ' +
-                'o solicitar asistencia si el problema persiste.' +
-            '</div>' +
-            '<button type="button" class="btn btn-sm btn-outline-dark banner-red__btn" data-accion="asistencia">Solicitar asistencia</button>';
-        bannersBox.appendChild(el);
-        el.querySelector('[data-accion="asistencia"]').addEventListener('click', function () {
-            el.querySelector('.banner-red__texto').innerHTML =
-                '<strong>Solicitud de asistencia registrada.</strong> ' +
-                'Acércate a la recepción del club: un operador puede cargar la incidencia por vos. ' +
-                'Tus datos quedaron guardados como borrador en este dispositivo.';
-            this.remove();
-        });
-    }
 
     function bannerFallo() {
         if (!bannersBox) return;
@@ -294,8 +267,6 @@
         if (abortActual) { try { abortActual.abort(); } catch (e) { /* no-op */ } }
         abortActual = ('AbortController' in window) ? new AbortController() : null;
 
-        var lentoId = setTimeout(bannerLento, LENTO_MS);
-
         fetch(form.action, {
             method: 'POST',
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -304,15 +275,12 @@
             signal: abortActual ? abortActual.signal : undefined
         })
             .then(function (resp) {
-                clearTimeout(lentoId);
-
                 if (resp.ok) {
                     // El backend confirmó que la incidencia se guardó: recién ahora
                     // se elimina el borrador del navegador y se bloquea todo
                     // autoguardado posterior (para que no se vuelva a escribir
                     // mientras la página redirige).
                     guardadoConfirmado = true;
-                    clearTimeout(debounceId);
                     borrarBorrador();
 
                     return resp.json()
@@ -336,7 +304,6 @@
                 restaurarBoton();
             })
             .catch(function (err) {
-                clearTimeout(lentoId);
                 if (err && err.name === 'AbortError') return; // reintento en curso
                 bannerFallo(); // offline / error de red -> borrador intacto
                 restaurarBoton();

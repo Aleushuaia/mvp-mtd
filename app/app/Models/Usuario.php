@@ -22,8 +22,11 @@ class Usuario extends Model
     protected $hidden = ['contrasena'];
 
     public const ROL_ADMINISTRADOR = 1;
+
     public const ROL_OPERADOR = 2;
+
     public const ROL_RESPONSABLE = 3;
+
     public const ROL_SOCIO = 4;
 
     public function rol(): BelongsTo

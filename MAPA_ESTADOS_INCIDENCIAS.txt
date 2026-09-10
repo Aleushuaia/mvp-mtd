@@ -1,0 +1,147 @@
+MAPA DE ESTADOS Y TRANSICIONES DE INCIDENCIAS
+EcoReporte - MVP
+
+1. ESTADOS DISPONIBLES
+
+1. Borrador
+   La incidencia fue guardada por el socio, pero todavía no fue enviada para
+   su revisión.
+
+2. Pendiente
+   El socio confirmó el envío. Queda a la espera de la revisión inicial.
+
+3. Confirmada
+   La revisión inicial aprobó la continuidad del reclamo. Espera que se le
+   asigne responsable y criticidad.
+
+4. En proceso
+   La incidencia ya tiene responsable y criticidad. Está siendo atendida.
+
+5. Resuelta
+   El reclamo fue solucionado. Es un estado final.
+
+6. Cancelada
+   El reclamo fue cancelado. Es un estado final.
+
+
+2. CIRCUITO PRINCIPAL
+
+   [Socio guarda datos]
+   Borrador
+      |
+      | Socio: "Confirmar envío"
+      v
+   Pendiente
+      |
+      | Sistema: después de 10 segundos, al ejecutarse la simulación
+      | Sorteo 50 % / 50 %
+      +------------------------------+
+      |                              |
+      v                              v
+   Confirmada                    Cancelada
+      |
+      | Sistema: después de otros 10 segundos, al ejecutarse la simulación
+      v
+   En proceso
+      |
+      | Sistema: después de otros 10 segundos, al ejecutarse la simulación
+      | Sorteo 50 % / 50 %
+      +------------------------------+
+      |                              |
+      v                              v
+   Resuelta                     En proceso
+                                  (permanece en este estado)
+
+
+3. TRANSICIONES DETALLADAS Y QUIÉN LAS REALIZA
+
+A. Alta y envío
+
+   Sin incidencia -> Borrador
+   Quién: Socio.
+   Acción: completa los datos y presiona "Guardar incidencia".
+   Observación: el socio puede editar la incidencia mientras siga en Borrador.
+
+   Borrador -> Pendiente
+   Quién: Socio.
+   Acción: presiona "Confirmar envío" en el panel de confirmación.
+   Observación: una vez enviada, el socio ya no puede editar sus datos.
+
+B. Revisión automática inicial
+
+   Pendiente -> Confirmada
+   Quién: Sistema, simulando la revisión de un operador disponible.
+   Cuándo: pasados 10 segundos desde que entró en Pendiente, al navegar por
+   una pantalla que ejecuta la simulación.
+   Resultado: se registra que la continuidad del reclamo fue aprobada.
+
+   Pendiente -> Cancelada
+   Quién: Sistema, simulando la revisión de un operador disponible.
+   Cuándo: en la misma revisión automática, con resultado aleatorio.
+   Resultado: se registra que el reclamo fue cancelado durante la revisión.
+
+C. Asignación automática
+
+   Confirmada -> En proceso
+   Quién: Sistema, simulando a un operador disponible.
+   Cuándo: pasados otros 10 segundos desde la Confirmada, al ejecutarse la
+   simulación.
+   Resultado: se asignan aleatoriamente un responsable y una criticidad.
+
+D. Resolución automática
+
+   En proceso -> Resuelta
+   Quién: Sistema, simulando a un operador disponible.
+   Cuándo: pasados otros 10 segundos desde la entrada a En proceso, al
+   ejecutarse la simulación.
+   Resultado: existe una probabilidad del 50 % de resolverla y se guarda un
+   comentario ficticio de resolución.
+
+   En proceso -> En proceso
+   Quién: Sistema.
+   Cuándo: en la misma evaluación automática, si el sorteo no la resuelve.
+   Resultado: la incidencia queda en En proceso. Esa instancia ya no vuelve a
+   sortearse automáticamente.
+
+E. Acciones manuales durante "En proceso"
+
+   En proceso -> Cancelada
+   Quién: Socio o Operador.
+   Dónde: respectivamente, en "Mis incidencias" o en el panel del operador.
+   Condición: el motivo es obligatorio y admite hasta 200 caracteres.
+   Resultado: se registra el motivo y el usuario que realizó la cancelación.
+
+   En proceso -> Resuelta
+   Quién: Operador.
+   Dónde: panel del operador.
+   Condición: puede dejar un mensaje opcional de hasta 200 caracteres.
+   Resultado: se registra el operador y, si se indicó, su mensaje.
+
+   En proceso -> En proceso
+   Quién: Operador.
+   Acción: puede modificar criticidad y responsables sin cambiar el estado.
+   Resultado: los cambios también quedan registrados en el historial.
+
+
+4. ESTADOS FINALES
+
+   Resuelta y Cancelada son estados finales en el MVP actual. No poseen
+   transiciones posteriores ni pueden volver a estar En proceso.
+
+
+5. HISTORIAL Y TRAZABILIDAD
+
+Cada alta, cambio de estado, asignación, edición, cancelación o resolución
+genera un registro de historial con:
+
+   - Estado anterior y estado nuevo.
+   - Fecha y hora.
+   - Usuario responsable, o un operador elegido por la simulación.
+   - Comentario o motivo cuando corresponde.
+
+
+6. ACLARACIÓN SOBRE LA SIMULACIÓN
+
+La simulación no se ejecuta mediante un proceso de fondo continuo. Se evalúa
+al abrir o consultar pantallas de incidencias. Por eso los intervalos de 10
+segundos se aplican cuando el sistema vuelve a procesar una incidencia.

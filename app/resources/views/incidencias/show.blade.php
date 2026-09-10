@@ -14,13 +14,6 @@
         <div class="alert alert-danger" role="alert">{{ session('error') }}</div>
     @endif
 
-    @if ($procesando)
-        <div class="alert alert-asignacion d-flex align-items-center gap-2" role="status">
-            <span class="spinner" aria-hidden="true"></span>
-            Simulación en curso: el club está gestionando esta incidencia. La página se actualiza sola.
-        </div>
-    @endif
-
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <h1 class="page-title h4 mb-0">Incidencia #{{ $incidencia->id_incidencia }}</h1>
         @include('incidencias.partials.estado-badge', ['nombre' => $incidencia->estado->nombre])
@@ -48,19 +41,8 @@
                 </dl>
 
                 <div class="d-flex flex-wrap gap-2 mt-3">
-                    @if ($incidencia->estaPendiente())
-                        <form method="POST" action="{{ route('incidencias.confirmar', $incidencia) }}"
-                              onsubmit="return confirm('¿Confirmar el envío de la incidencia N.º {{ $incidencia->id_incidencia }}?');">
-                            @csrf
-                            <button class="btn btn-trebol">Confirmar envío</button>
-                        </form>
-                    @endif
-                    @if ($incidencia->sePuedeCancelar())
-                        <form method="POST" action="{{ route('incidencias.cancelar', $incidencia) }}"
-                              onsubmit="return confirm('¿Cambiar la incidencia N.º {{ $incidencia->id_incidencia }} a Cancelada? Esta acción no se puede revertir.');">
-                            @csrf
-                            <button class="btn btn-danger">Cambiar a Cancelada</button>
-                        </form>
+                    @if ($incidencia->estaBorrador())
+                        <a href="{{ route('incidencias.confirmar-alta', $incidencia) }}" class="btn btn-trebol">Confirmar envío</a>
                     @endif
                 </div>
             </div>
@@ -117,11 +99,3 @@
         </div>
     </div>
 @endsection
-
-@push('scripts')
-<script>
-    @if ($procesando)
-    setTimeout(function () { window.location.reload(); }, 11000);
-    @endif
-</script>
-@endpush

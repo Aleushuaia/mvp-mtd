@@ -2,6 +2,7 @@
 
 namespace App\Simulacion;
 
+use App\Models\CriticidadIncidencia;
 use App\Models\HistorialEstadoIncidencia;
 use App\Models\Incidencia;
 use App\Models\Operador;
@@ -11,8 +12,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * Simula la asignación de responsables que en producción haría un operador.
  *
- * Regla del MVP: unos segundos después de que el socio confirma una
- * incidencia, "el sistema en uso" le asigna automáticamente UN responsable
+ * Regla del MVP: unos segundos después de que la revisión automática confirma
+ * una incidencia, "el sistema en uso" le asigna automáticamente UN responsable
  * (y deja registrado qué operador lo hizo). La incidencia pasa a «En proceso».
  *
  * Como no hay un worker de colas corriendo, la simulación es perezosa: se
@@ -35,8 +36,7 @@ class SimuladorAsignaciones implements Simulacion
         $asignadas = 0;
 
         foreach ($pendientes as $incidencia) {
-            if ($this->confirmacionMaduro($incidencia)) {
-                $this->asignar($incidencia);
+            if ($this->asignar($incidencia)) {
                 $asignadas++;
             }
         }
@@ -48,26 +48,30 @@ class SimuladorAsignaciones implements Simulacion
      * Asigna a una incidencia un operador (quien "hizo" la asignación) y un
      * responsable, ambos elegidos al azar. Un único responsable por incidencia.
      */
-    public function asignar(Incidencia $incidencia): void
+    public function asignar(Incidencia $incidencia): bool
     {
-        if ($incidencia->tieneResponsable()) {
-            return;
-        }
+        return DB::transaction(function () use ($incidencia) {
+            $incidencia = Incidencia::whereKey($incidencia->getKey())->lockForUpdate()->first();
+            if ($incidencia === null || (int) $incidencia->id_estado_incidencia !== Incidencia::ESTADO_CONFIRMADA
+                || $incidencia->tieneResponsable() || ! $this->confirmacionMaduro($incidencia)) {
+                return false;
+            }
 
-        $operador = Operador::where('disponible', true)->inRandomOrder()->first();
-        $responsable = Responsable::where('disponible', true)->inRandomOrder()->first();
+            $operador = Operador::where('disponible', true)->inRandomOrder()->first();
+            $responsable = Responsable::where('disponible', true)->inRandomOrder()->first();
+            $criticidad = $this->elegirCriticidad((int) $incidencia->id_usuario);
+            if ($operador === null || $responsable === null || $criticidad === null) {
+                return false;
+            }
 
-        if ($operador === null || $responsable === null) {
-            return;
-        }
-
-        $ahora = now();
-
-        DB::transaction(function () use ($incidencia, $operador, $responsable, $ahora) {
+            $ahora = now();
             $incidencia->responsables()->attach($responsable->id, ['fecha_asignacion' => $ahora]);
 
             $estadoAnterior = (int) $incidencia->id_estado_incidencia;
-            $incidencia->update(['id_estado_incidencia' => Incidencia::ESTADO_EN_PROCESO]);
+            $incidencia->update([
+                'id_estado_incidencia' => Incidencia::ESTADO_EN_PROCESO,
+                'id_criticidad' => $criticidad->id,
+            ]);
 
             HistorialEstadoIncidencia::create([
                 'id_incidencia' => $incidencia->id_incidencia,
@@ -76,12 +80,37 @@ class SimuladorAsignaciones implements Simulacion
                 'id_usuario' => $operador->id_usuario,
                 'fecha_hora' => $ahora,
                 'comentario' => sprintf(
-                    'Asignación automática del sistema. Operador: %s. Responsable asignado: %s.',
+                    'Operador: %s. Responsable asignado: %s. Criticidad: %s.',
                     $operador->usuario->apellido_nombres ?? 'N/D',
                     $responsable->usuario->apellido_nombres ?? 'N/D',
+                    $criticidad->nombre,
                 ),
             ]);
+
+            return true;
         });
+    }
+
+    /** Sortea entre los niveles menos usados por el socio, ignorando los valores iniciales sin asignar. */
+    private function elegirCriticidad(int $usuarioId): ?CriticidadIncidencia
+    {
+        $criticidades = CriticidadIncidencia::orderBy('id')->lockForUpdate()->get();
+        if ($criticidades->isEmpty()) {
+            return null;
+        }
+
+        $cantidades = Incidencia::where('id_usuario', $usuarioId)
+            ->whereHas('responsables')
+            ->selectRaw('id_criticidad, COUNT(*) AS cantidad')
+            ->groupBy('id_criticidad')
+            ->pluck('cantidad', 'id_criticidad');
+
+        $minimo = $criticidades->min(fn (CriticidadIncidencia $criticidad) => (int) ($cantidades[$criticidad->id] ?? 0));
+        $opciones = $criticidades->filter(
+            fn (CriticidadIncidencia $criticidad) => (int) ($cantidades[$criticidad->id] ?? 0) === $minimo
+        )->values();
+
+        return $opciones[random_int(0, $opciones->count() - 1)];
     }
 
     /** ¿La confirmación de esta incidencia ya tiene la antigüedad mínima? */
@@ -93,6 +122,6 @@ class SimuladorAsignaciones implements Simulacion
             ->first();
 
         return $confirmacion !== null
-            && $confirmacion->fecha_hora->clone()->addSeconds(self::DEMORA_ASIGNACION_SEGUNDOS)->isPast();
+            && $confirmacion->fecha_hora->clone()->addSeconds(self::DEMORA_ASIGNACION_SEGUNDOS)->lessThanOrEqualTo(now());
     }
 }

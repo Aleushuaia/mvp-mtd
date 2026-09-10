@@ -77,7 +77,7 @@
                 @else
                     <p class="text-muted mb-2">
                         La criticidad y los responsables sólo pueden editarse mientras la incidencia
-                        está <strong>Confirmada</strong> o <strong>En proceso</strong>.
+                        está <strong>En proceso</strong>.
                     </p>
                     <dl class="datos-detalle mb-0">
                         <dt>Criticidad</dt>

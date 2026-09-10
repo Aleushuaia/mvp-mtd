@@ -36,6 +36,8 @@ Route::middleware('usuario.auth')->group(function () {
     Route::get('/incidencias', [IncidenciaController::class, 'index'])->name('incidencias.index');
     Route::get('/incidencias/nueva', [IncidenciaController::class, 'create'])->name('incidencias.create');
     Route::post('/incidencias', [IncidenciaController::class, 'store'])->name('incidencias.store');
+    Route::get('/incidencias/{incidencia}/editar', [IncidenciaController::class, 'edit'])->name('incidencias.edit');
+    Route::patch('/incidencias/{incidencia}', [IncidenciaController::class, 'update'])->name('incidencias.update');
     Route::get('/incidencias/{incidencia}/confirmar-alta', [IncidenciaController::class, 'confirmarAlta'])->name('incidencias.confirmar-alta');
     Route::get('/incidencias/{incidencia}', [IncidenciaController::class, 'show'])->name('incidencias.show');
     Route::get('/incidencias/{incidencia}/historial', [IncidenciaController::class, 'historial'])->name('incidencias.historial');
@@ -46,4 +48,6 @@ Route::middleware('usuario.auth')->group(function () {
     Route::get('/operador/incidencias', [OperadorIncidenciaController::class, 'index'])->name('operador.incidencias.index');
     Route::get('/operador/incidencias/{incidencia}', [OperadorIncidenciaController::class, 'edit'])->name('operador.incidencias.edit');
     Route::patch('/operador/incidencias/{incidencia}', [OperadorIncidenciaController::class, 'update'])->name('operador.incidencias.update');
+    Route::post('/operador/incidencias/{incidencia}/cancelar', [OperadorIncidenciaController::class, 'cancelar'])->name('operador.incidencias.cancelar');
+    Route::post('/operador/incidencias/{incidencia}/resolver', [OperadorIncidenciaController::class, 'resolver'])->name('operador.incidencias.resolver');
 });

@@ -1,0 +1,82 @@
+INSTRUCTIVO PARA CLONAR Y EJECUTAR EL PROYECTO
+===============================================
+
+Requisitos
+----------
+- Tener Git instalado.
+- Tener Docker Desktop instalado y abierto.
+- Si el repositorio es privado, tener acceso como colaborador de GitHub.
+
+Pasos (Windows / PowerShell)
+----------------------------
+
+1. Abrir PowerShell en la carpeta donde se desea guardar el proyecto.
+
+2. Clonar el repositorio y entrar a su carpeta:
+
+   git clone https://github.com/Aleushuaia/mvp-mtd.git
+   cd mvp-mtd
+
+3. Crear el archivo de configuración local de Laravel:
+
+   Copy-Item app\.env.example app\.env
+
+4. Abrir el archivo app\.env y cambiar o agregar estas variables:
+
+   APP_URL=http://localhost:8080
+
+   DB_CONNECTION=pgsql
+   DB_HOST=postgres
+   DB_PORT=5432
+   DB_DATABASE=mvp
+   DB_USERNAME=mvp
+   DB_PASSWORD=mvp
+
+5. Construir e iniciar los contenedores de Docker:
+
+   docker compose build
+   docker compose up -d
+
+6. Instalar las dependencias de Laravel:
+
+   docker compose exec app composer install
+
+7. Generar la clave de la aplicación:
+
+   docker compose exec app php artisan key:generate
+
+8. Crear las tablas y cargar los datos iniciales:
+
+   docker compose exec app php artisan migrate --seed
+
+9. Abrir la aplicación en el navegador:
+
+   http://localhost:8080
+
+
+Comandos útiles
+---------------
+
+Detener los contenedores:
+
+   docker compose down
+
+Volver a iniciarlos:
+
+   docker compose up -d
+
+Ver el estado de los contenedores:
+
+   docker compose ps
+
+Ver los registros si ocurre un error:
+
+   docker compose logs -f
+
+
+Importante
+----------
+
+No ejecutar "docker compose down -v", ya que elimina los datos persistentes
+de PostgreSQL.
+

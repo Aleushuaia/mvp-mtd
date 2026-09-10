@@ -18,7 +18,7 @@ use Illuminate\View\View;
  * Panel del Operador (rol "Operador").
  *
  * El operador ve TODAS las incidencias, las filtra por N.º / descripción /
- * estado, y sobre las que están activas (Confirmada o En proceso) puede:
+ * estado, y sobre las que están En proceso puede:
  *  - cambiar la criticidad,
  *  - asignar uno o varios responsables.
  *
@@ -37,24 +37,16 @@ class OperadorIncidenciaController extends Controller
         $this->simulador->ejecutarTodas();
 
         $incidencias = Incidencia::with([
-                'tipo', 'ubicacion', 'estado', 'criticidad', 'usuario', 'responsables.usuario',
-            ])
+            'tipo', 'ubicacion', 'estado', 'criticidad', 'usuario', 'responsables.usuario',
+        ])
             ->filtrar($request->only(['numero', 'descripcion', 'estado']))
             ->orderByDesc('fecha_hora_alta')
             ->orderByDesc('id_incidencia')
             ->get();
 
-        $procesando = $incidencias->contains(
-            fn (Incidencia $i) => in_array((int) $i->id_estado_incidencia, [
-                Incidencia::ESTADO_CONFIRMADA,
-                Incidencia::ESTADO_EN_PROCESO,
-            ], true)
-        );
-
         return view('operador.incidencias.index', [
             'incidencias' => $incidencias,
             'estados' => EstadoIncidencia::orderBy('id_estado')->get(),
-            'procesando' => $procesando,
         ]);
     }
 
@@ -87,7 +79,7 @@ class OperadorIncidenciaController extends Controller
         abort_unless(
             $incidencia->esGestionablePorOperador(),
             403,
-            'Sólo se puede editar mientras la incidencia está Confirmada o En proceso.'
+            'Sólo se puede editar mientras la incidencia está En proceso.'
         );
 
         $datos = $request->validate([
@@ -137,18 +129,12 @@ class OperadorIncidenciaController extends Controller
                 return;
             }
 
-            // Confirmada + ya hay responsables => pasa a En proceso.
             $estadoAnterior = (int) $incidencia->id_estado_incidencia;
-            $estadoNuevo = $estadoAnterior;
-            if ($estadoAnterior === Incidencia::ESTADO_CONFIRMADA && $seleccion->isNotEmpty()) {
-                $estadoNuevo = Incidencia::ESTADO_EN_PROCESO;
-                $incidencia->update(['id_estado_incidencia' => $estadoNuevo]);
-            }
 
             HistorialEstadoIncidencia::create([
                 'id_incidencia' => $incidencia->id_incidencia,
                 'id_estado_anterior' => $estadoAnterior,
-                'id_estado_nuevo' => $estadoNuevo,
+                'id_estado_nuevo' => $estadoAnterior,
                 'id_usuario' => $operadorUsuarioId,
                 'fecha_hora' => now(),
                 'comentario' => 'Edición del operador. '.implode(' | ', $cambios),
@@ -158,6 +144,84 @@ class OperadorIncidenciaController extends Controller
         return redirect()
             ->route('operador.incidencias.edit', $incidencia)
             ->with('ok', 'Incidencia N.º '.$incidencia->id_incidencia.' actualizada.');
+    }
+
+    /** El operador puede cancelar una incidencia mientras está En proceso. */
+    public function cancelar(Request $request, Incidencia $incidencia): RedirectResponse
+    {
+        $operadorUsuarioId = $this->operadorId();
+
+        $datos = $request->validate([
+            'comentario_cancelacion' => ['required', 'string', 'max:200'],
+        ], [
+            'comentario_cancelacion.required' => 'Ingrese el motivo de la cancelación.',
+            'comentario_cancelacion.max' => 'El motivo de la cancelación admite hasta 200 caracteres.',
+        ]);
+
+        DB::transaction(function () use ($incidencia, $operadorUsuarioId, $datos) {
+            $actual = Incidencia::whereKey($incidencia->getKey())->lockForUpdate()->firstOrFail();
+
+            abort_unless(
+                $actual->estaEnProceso(),
+                422,
+                'Solo se puede cancelar una incidencia que está En proceso.'
+            );
+
+            $actual->update(['id_estado_incidencia' => Incidencia::ESTADO_CANCELADA]);
+
+            HistorialEstadoIncidencia::create([
+                'id_incidencia' => $actual->id_incidencia,
+                'id_estado_anterior' => Incidencia::ESTADO_EN_PROCESO,
+                'id_estado_nuevo' => Incidencia::ESTADO_CANCELADA,
+                'id_usuario' => $operadorUsuarioId,
+                'fecha_hora' => now(),
+                'comentario' => 'Cancelada por el operador. Motivo: '.trim($datos['comentario_cancelacion']),
+            ]);
+        });
+
+        return redirect()
+            ->route('operador.incidencias.index')
+            ->with('ok', 'Incidencia N.º '.$incidencia->id_incidencia.' cancelada.');
+    }
+
+    /** El operador puede resolver una incidencia mientras está En proceso. */
+    public function resolver(Request $request, Incidencia $incidencia): RedirectResponse
+    {
+        $operadorUsuarioId = $this->operadorId();
+
+        $datos = $request->validate([
+            'comentario_resolucion' => ['nullable', 'string', 'max:200'],
+        ], [
+            'comentario_resolucion.max' => 'El mensaje de resolución admite hasta 200 caracteres.',
+        ]);
+
+        DB::transaction(function () use ($incidencia, $operadorUsuarioId, $datos) {
+            $actual = Incidencia::whereKey($incidencia->getKey())->lockForUpdate()->firstOrFail();
+
+            abort_unless(
+                $actual->estaEnProceso(),
+                422,
+                'Solo se puede resolver una incidencia que está En proceso.'
+            );
+
+            $mensaje = trim((string) ($datos['comentario_resolucion'] ?? ''));
+            $actual->update(['id_estado_incidencia' => Incidencia::ESTADO_RESUELTA]);
+
+            HistorialEstadoIncidencia::create([
+                'id_incidencia' => $actual->id_incidencia,
+                'id_estado_anterior' => Incidencia::ESTADO_EN_PROCESO,
+                'id_estado_nuevo' => Incidencia::ESTADO_RESUELTA,
+                'id_usuario' => $operadorUsuarioId,
+                'fecha_hora' => now(),
+                'comentario' => $mensaje === ''
+                    ? 'Resuelta por el operador.'
+                    : 'Resuelta por el operador. Mensaje: '.$mensaje,
+            ]);
+        });
+
+        return redirect()
+            ->route('operador.incidencias.index')
+            ->with('ok', 'Incidencia N.º '.$incidencia->id_incidencia.' marcada como resuelta.');
     }
 
     /** Esta sección es exclusiva del rol Operador. */

@@ -1,12 +1,12 @@
 @php
     $mapaEstados = [
-        'Borrador' => 'text-bg-light text-dark border',
-        'Pendiente' => 'text-bg-warning',
-        'Confirmada' => 'text-bg-success',
-        'En proceso' => 'text-bg-info',
-        'Resuelta' => 'text-bg-primary',
-        'Cancelada' => 'text-bg-secondary',
+        'Borrador' => 'estado-badge--borrador',
+        'Pendiente' => 'estado-badge--pendiente',
+        'Confirmada' => 'estado-badge--confirmada',
+        'En proceso' => 'estado-badge--en-proceso',
+        'Resuelta' => 'estado-badge--resuelta',
+        'Cancelada' => 'estado-badge--cancelada',
     ];
-    $clase = $mapaEstados[$nombre] ?? 'text-bg-light text-dark border';
+    $clase = $mapaEstados[$nombre] ?? 'estado-badge--borrador';
 @endphp
 <span class="badge estado-badge {{ $clase }}">{{ $nombre }}</span>

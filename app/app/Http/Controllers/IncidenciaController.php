@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\EstadoIncidencia;
-use App\Models\Incidencia;
 use App\Models\HistorialEstadoIncidencia;
+use App\Models\Incidencia;
 use App\Models\TipoIncidencia;
 use App\Models\Ubicacion;
 use App\Models\Usuario;
@@ -21,23 +21,20 @@ use Illuminate\View\View;
  *
  * Circuito:
  *  1. El socio completa 3 campos (tipo, ubicación, descripción) — todos obligatorios.
- *  2. Al guardar, la incidencia queda en estado PENDIENTE, criticidad NORMAL.
+ *  2. Al guardar, la incidencia queda en estado BORRADOR, criticidad NORMAL.
  *  3. Inmediatamente se muestra un modal con los datos cargados que pide
- *     confirmar el envío; si confirma, la incidencia pasa a CONFIRMADA.
- *  4. Desde "Mis incidencias" el socio puede confirmar una pendiente o
- *     cancelar (Pendiente/Confirmada -> Cancelada), siempre con el mismo
- *     modal de confirmación.
+ *     confirmar el envío; si confirma, la incidencia pasa a PENDIENTE.
+ *  4. El sistema simula la revisión, asignación y resolución posteriores.
  *
  * Todo cambio de estado (incluida el alta) queda registrado en
  * `historial_estado_incidencia` con estado anterior/nuevo, usuario,
  * fecha/hora y un comentario.
  *
- *  5. Al confirmar, unos segundos después "el sistema" (simulado) asigna
- *     automáticamente un responsable y la incidencia pasa a EN PROCESO.
+ *  5. Cada etapa automática se evalúa luego de diez segundos.
  *
  * Datos que se completan automáticamente (el socio no los ingresa):
  *  - id_usuario / id_usuario_alta = socio en sesión
- *  - id_estado_incidencia = PENDIENTE
+ *  - id_estado_incidencia = BORRADOR
  *  - id_criticidad = NORMAL
  *  - fecha_hora_alta = ahora
  * El socio sí declara `fecha_hora_evento` (fecha y hora del hecho) en el
@@ -62,17 +59,9 @@ class IncidenciaController extends Controller
             ->orderByDesc('id_incidencia')
             ->get();
 
-        // ¿Hay alguna incidencia con actualización automática inminente? -> autorefresh
-        $procesando = $incidencias->contains(
-            fn (Incidencia $i) => in_array((int) $i->id_estado_incidencia, [
-                Incidencia::ESTADO_CONFIRMADA,
-                Incidencia::ESTADO_EN_PROCESO,
-            ], true)
-        );
-
         $estados = EstadoIncidencia::orderBy('id_estado')->get();
 
-        return view('incidencias.index', compact('incidencias', 'procesando', 'estados'));
+        return view('incidencias.index', compact('incidencias', 'estados'));
     }
 
     /** Formulario de alta. */
@@ -84,22 +73,10 @@ class IncidenciaController extends Controller
         ]);
     }
 
-    /** Alta de incidencia -> estado PENDIENTE + registro en historial. */
+    /** Alta de incidencia -> estado BORRADOR + registro en historial. */
     public function store(Request $request): RedirectResponse|JsonResponse
     {
-        $datos = $request->validate([
-            'id_tipo_incidencia' => ['required', 'integer', 'exists:tipos_incidencia,id'],
-            'id_ubicacion' => ['required', 'integer', 'exists:ubicaciones,id'],
-            'descripcion' => ['required', 'string', 'max:140'],
-            'fecha_hora_evento' => ['required', 'date', 'before_or_equal:now'],
-        ], [
-            'id_tipo_incidencia.required' => 'Seleccione el tipo de incidencia.',
-            'id_ubicacion.required' => 'Seleccione la ubicación.',
-            'descripcion.required' => 'Ingrese una breve descripción.',
-            'descripcion.max' => 'La descripción admite hasta 140 caracteres.',
-            'fecha_hora_evento.required' => 'Indique la fecha y hora en que ocurrió el hecho.',
-            'fecha_hora_evento.before_or_equal' => 'La fecha y hora del hecho no puede ser futura.',
-        ]);
+        $datos = $this->validarDatos($request);
 
         $socioId = $this->socioId();
         $ahora = now();
@@ -111,7 +88,7 @@ class IncidenciaController extends Controller
                 'id_usuario' => $socioId,
                 'id_tipo_incidencia' => $datos['id_tipo_incidencia'],
                 'id_ubicacion' => $datos['id_ubicacion'],
-                'id_estado_incidencia' => Incidencia::ESTADO_PENDIENTE,
+                'id_estado_incidencia' => Incidencia::ESTADO_BORRADOR,
                 'id_criticidad' => Incidencia::CRITICIDAD_NORMAL,
                 'descripcion' => $datos['descripcion'],
                 'fecha_hora_evento' => $fechaEvento,
@@ -121,9 +98,9 @@ class IncidenciaController extends Controller
             $this->registrarHistorial(
                 $incidencia,
                 null,
-                Incidencia::ESTADO_PENDIENTE,
+                Incidencia::ESTADO_BORRADOR,
                 $socioId,
-                'Alta de la incidencia. Estado inicial: Pendiente.',
+                'Alta de la incidencia. Estado inicial: Borrador.',
                 $ahora,
             );
 
@@ -147,21 +124,63 @@ class IncidenciaController extends Controller
 
     /**
      * Pantalla que aparece inmediatamente después de "Guardar incidencia":
-     * la incidencia ya quedó como PENDIENTE y aquí el socio decide si la
-     * confirma (pasa a CONFIRMADA) o la deja pendiente por ahora. Recién
+     * la incidencia ya quedó como BORRADOR y aquí el socio decide si la
+     * confirma (pasa a PENDIENTE) o vuelve a editar los datos. Recién
      * después continúa a "Mis incidencias".
      */
     public function confirmarAlta(Incidencia $incidencia): View|RedirectResponse
     {
         $this->autorizar($incidencia);
 
-        if (! $incidencia->estaPendiente()) {
+        if (! $incidencia->estaBorrador()) {
             return redirect()->route('incidencias.index');
         }
 
-        $incidencia->load(['tipo', 'ubicacion', 'estado', 'criticidad']);
+        $incidencia->load(['tipo', 'ubicacion']);
 
         return view('incidencias.confirmar-alta', compact('incidencia'));
+    }
+
+    /** Corrección de los datos antes de confirmar el envío. */
+    public function edit(Incidencia $incidencia): View|RedirectResponse
+    {
+        $this->autorizar($incidencia);
+
+        if (! $incidencia->estaBorrador()) {
+            return redirect()->route('incidencias.index')
+                ->with('error', 'Solo se pueden editar incidencias en borrador.');
+        }
+
+        return view('incidencias.create', [
+            'incidencia' => $incidencia,
+            'tipos' => TipoIncidencia::orderBy('nombre')->get(),
+            'ubicaciones' => Ubicacion::orderBy('nombre')->get(),
+        ]);
+    }
+
+    public function update(Request $request, Incidencia $incidencia): RedirectResponse|JsonResponse
+    {
+        $this->autorizar($incidencia);
+        $datos = $this->validarDatos($request);
+
+        DB::transaction(function () use ($incidencia, $datos) {
+            $actual = Incidencia::whereKey($incidencia->getKey())->lockForUpdate()->firstOrFail();
+            abort_unless($actual->estaBorrador(), 422, 'Solo se pueden editar incidencias en borrador.');
+
+            $actual->update($datos);
+        });
+
+        $destino = route('incidencias.confirmar-alta', $incidencia);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'ok' => true,
+                'id_incidencia' => $incidencia->id_incidencia,
+                'redirect' => $destino,
+            ]);
+        }
+
+        return redirect($destino);
     }
 
     /** Detalle de una incidencia propia, con su historial completo. */
@@ -179,12 +198,7 @@ class IncidenciaController extends Controller
             'historial.estadoAnterior', 'historial.estadoNuevo', 'historial.usuario',
         ]);
 
-        $procesando = in_array((int) $incidencia->id_estado_incidencia, [
-            Incidencia::ESTADO_CONFIRMADA,
-            Incidencia::ESTADO_EN_PROCESO,
-        ], true);
-
-        return view('incidencias.show', compact('incidencia', 'procesando'));
+        return view('incidencias.show', compact('incidencia'));
     }
 
     /** Historial de cambios de estado (para el modal "Ver historial"). */
@@ -209,47 +223,84 @@ class IncidenciaController extends Controller
         ]);
     }
 
-    /** Pendiente -> Confirmada (mismo modal de confirmación). */
+    /** Borrador -> Pendiente al confirmar el envío. */
     public function confirmar(Incidencia $incidencia): RedirectResponse
     {
         $this->autorizar($incidencia);
 
-        if (! $incidencia->estaPendiente()) {
+        if (! $incidencia->estaBorrador()) {
             return redirect()->route('incidencias.index')
-                ->with('error', 'La incidencia N.º '.$incidencia->id_incidencia.' ya no está Pendiente.');
+                ->with('error', 'La incidencia N.º '.$incidencia->id_incidencia.' ya no está en Borrador.');
         }
 
         $this->cambiarEstado(
             $incidencia,
-            Incidencia::ESTADO_CONFIRMADA,
+            Incidencia::ESTADO_PENDIENTE,
             'El socio confirmó el envío de la incidencia.',
         );
 
         return redirect()->route('incidencias.index')
-            ->with('ok', 'Incidencia N.º '.$incidencia->id_incidencia.' confirmada.');
+            ->with('ok', 'Incidencia N.º '.$incidencia->id_incidencia.' enviada para revisión.');
     }
 
-    /** Pendiente/Confirmada -> Cancelada (mismo modal de confirmación). */
-    public function cancelar(Incidencia $incidencia): RedirectResponse
+    /** El socio puede cancelar una incidencia propia mientras está En proceso. */
+    public function cancelar(Request $request, Incidencia $incidencia): RedirectResponse
     {
+        $socioId = $this->socioId();
         $this->autorizar($incidencia);
 
-        if (! $incidencia->sePuedeCancelar()) {
-            return redirect()->route('incidencias.index')
-                ->with('error', 'La incidencia N.º '.$incidencia->id_incidencia.' no puede cancelarse en su estado actual.');
-        }
+        $datos = $request->validate([
+            'comentario_cancelacion' => ['required', 'string', 'max:200'],
+        ], [
+            'comentario_cancelacion.required' => 'Ingrese el motivo de la cancelación.',
+            'comentario_cancelacion.max' => 'El motivo de la cancelación admite hasta 200 caracteres.',
+        ]);
 
-        $this->cambiarEstado(
-            $incidencia,
-            Incidencia::ESTADO_CANCELADA,
-            'El socio canceló la incidencia.',
-        );
+        DB::transaction(function () use ($incidencia, $socioId, $datos) {
+            $actual = Incidencia::whereKey($incidencia->getKey())->lockForUpdate()->firstOrFail();
 
-        return redirect()->route('incidencias.index')
+            abort_unless(
+                $actual->estaEnProceso(),
+                422,
+                'Solo se puede cancelar una incidencia que está En proceso.'
+            );
+
+            $actual->update(['id_estado_incidencia' => Incidencia::ESTADO_CANCELADA]);
+
+            $this->registrarHistorial(
+                $actual,
+                Incidencia::ESTADO_EN_PROCESO,
+                Incidencia::ESTADO_CANCELADA,
+                $socioId,
+                'Cancelada por el socio. Motivo: '.trim($datos['comentario_cancelacion']),
+                now(),
+            );
+        });
+
+        return redirect()
+            ->route('incidencias.index')
             ->with('ok', 'Incidencia N.º '.$incidencia->id_incidencia.' cancelada.');
     }
 
     // -----------------------------------------------------------------
+
+    /** @return array{id_tipo_incidencia: mixed, id_ubicacion: mixed, descripcion: string, fecha_hora_evento: string} */
+    private function validarDatos(Request $request): array
+    {
+        return $request->validate([
+            'id_tipo_incidencia' => ['required', 'integer', 'exists:tipos_incidencia,id'],
+            'id_ubicacion' => ['required', 'integer', 'exists:ubicaciones,id'],
+            'descripcion' => ['required', 'string', 'max:140'],
+            'fecha_hora_evento' => ['required', 'date', 'before_or_equal:now'],
+        ], [
+            'id_tipo_incidencia.required' => 'Seleccione el tipo de incidencia.',
+            'id_ubicacion.required' => 'Seleccione la ubicación.',
+            'descripcion.required' => 'Ingrese una breve descripción.',
+            'descripcion.max' => 'La descripción admite hasta 140 caracteres.',
+            'fecha_hora_evento.required' => 'Indique la fecha y hora en que ocurrió el hecho.',
+            'fecha_hora_evento.before_or_equal' => 'La fecha y hora del hecho no puede ser futura.',
+        ]);
+    }
 
     private function cambiarEstado(Incidencia $incidencia, int $nuevoEstado, string $comentario): void
     {

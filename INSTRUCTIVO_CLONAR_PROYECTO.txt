@@ -1,18 +1,23 @@
-INSTRUCTIVO PARA CLONAR Y EJECUTAR EL PROYECTO
-===============================================
+INSTRUCTIVO DE INSTALACIÓN Y EJECUCIÓN DEL PROYECTO
+EcoReporte - MVP de Gestión de Incidencias
 
-Requisitos
-----------
-- Tener Git instalado.
-- Tener Docker Desktop instalado y abierto.
-- Si el repositorio es privado, tener acceso como colaborador de GitHub.
+REQUISITOS
 
-Pasos (Windows / PowerShell)
-----------------------------
+- Git instalado.
+- Docker Desktop instalado, abierto y en ejecución. Incluye Docker Compose.
+- Acceso al repositorio de GitHub si este es privado.
+- Conexión a Internet durante la primera instalación para descargar las
+  imágenes y dependencias.
+
+No hace falta instalar PHP, Composer, PostgreSQL ni Node.js en la PC: el
+proyecto los ejecuta dentro de Docker.
+
+
+INSTALACIÓN INICIAL (WINDOWS / POWERSHELL)
 
 1. Abrir PowerShell en la carpeta donde se desea guardar el proyecto.
 
-2. Clonar el repositorio y entrar a su carpeta:
+2. Clonar el repositorio y entrar en su carpeta:
 
    git clone https://github.com/Aleushuaia/mvp-mtd.git
    cd mvp-mtd
@@ -21,7 +26,7 @@ Pasos (Windows / PowerShell)
 
    Copy-Item app\.env.example app\.env
 
-4. Abrir el archivo app\.env y cambiar o agregar estas variables:
+4. Abrir app\.env y reemplazar o agregar estas variables:
 
    APP_URL=http://localhost:8080
 
@@ -32,32 +37,67 @@ Pasos (Windows / PowerShell)
    DB_USERNAME=mvp
    DB_PASSWORD=mvp
 
-5. Construir e iniciar los contenedores de Docker:
+   Guardar el archivo. APP_KEY debe quedar vacío: se generará en el paso 7.
 
-   docker compose build
-   docker compose up -d
+5. Construir e iniciar todos los servicios:
 
-6. Instalar las dependencias de Laravel:
+   docker compose up -d --build
+
+   Docker inicia tres contenedores:
+   - mvp-app: Laravel con PHP 8.5.
+   - mvp-nginx: servidor web expuesto en el puerto 8080.
+   - mvp-postgres: PostgreSQL 18 con la base de datos mvp.
+
+6. Instalar las dependencias PHP dentro del contenedor:
 
    docker compose exec app composer install
 
-7. Generar la clave de la aplicación:
+7. Generar la clave de Laravel:
 
    docker compose exec app php artisan key:generate
 
-8. Crear las tablas y cargar los datos iniciales:
+8. Crear las tablas y cargar los datos de demostración:
 
    docker compose exec app php artisan migrate --seed
 
-9. Abrir la aplicación en el navegador:
+9. Verificar que los servicios estén activos:
+
+   docker compose ps
+
+10. Abrir la aplicación:
 
    http://localhost:8080
 
 
-Comandos útiles
----------------
+INGRESO A LA DEMO
 
-Detener los contenedores:
+El MVP solicita solamente nombre de usuario; no pide contraseña (todas las
+cuentas de prueba igual tienen la contraseña genérica "123456", por si en
+el futuro se valida).
+
+UsuarioSeeder crea 40 cuentas de prueba con nombre de usuario predecible,
+según el rol:
+
+   - Socios   (rol "Socio"):        socio1, socio2, socio3, ... socio20
+                                     (20 en total, id_socio de 1 a 20).
+   - Operadores (rol "Operador"):   operador1, operador2, ... operador10
+                                     (10 en total).
+   - Responsables (rol "Responsable"): responsable1, responsable2, ...
+                                     responsable10 (10 en total).
+
+El nombre y apellido que se muestra en pantalla (no el nombre de usuario)
+se genera al azar con datos ficticios típicos de Argentina, la mitad
+varones y la mitad mujeres; eso es solo un dato de presentación, el login
+siempre sigue el patrón socioN / operadorN / responsableN.
+
+Para ingresar, usar directamente uno de esos nombres de usuario, por
+ejemplo: socio1 (abre el panel del socio), operador1 (panel del operador)
+o responsable1 (panel del responsable).
+
+
+COMANDOS ÚTILES
+
+Detener los contenedores sin eliminar la base de datos:
 
    docker compose down
 
@@ -65,18 +105,39 @@ Volver a iniciarlos:
 
    docker compose up -d
 
-Ver el estado de los contenedores:
-
-   docker compose ps
-
-Ver los registros si ocurre un error:
+Ver los registros si aparece un error:
 
    docker compose logs -f
 
+Ejecutar las pruebas automatizadas:
 
-Importante
-----------
+   docker compose exec app php artisan test
 
-No ejecutar "docker compose down -v", ya que elimina los datos persistentes
-de PostgreSQL.
+Recrear la base de demostración desde cero (ELIMINA los datos locales):
 
+   docker compose exec app php artisan migrate:fresh --seed
+
+Repoblar solamente los usuarios de prueba (borra usuarios, e incidencias e
+historial relacionados, y recrea los 40 usuarios desde cero):
+
+   docker compose exec app php artisan db:seed --class=UsuarioSeeder
+   docker compose exec app php artisan db:seed --class=OperadorSeeder
+   docker compose exec app php artisan db:seed --class=ResponsableSeeder
+
+
+PROBLEMAS FRECUENTES
+
+- Si Docker Desktop no está abierto, los comandos docker compose fallarán.
+- Si el puerto 8080 o 5432 está ocupado, modificar APP_PORT o POSTGRES_PORT
+  en el archivo .env de la raíz del proyecto (ya existe con esos valores por
+  defecto). Si se cambia APP_PORT, actualizar también APP_URL en app\.env y
+  usar ese puerto en el navegador.
+- Si el navegador no abre la aplicación, ejecutar docker compose ps y revisar
+  docker compose logs -f nginx app postgres.
+- La primera ejecución puede tardar porque descarga las imágenes de PHP,
+  Nginx y PostgreSQL, e instala Composer.
+- No usar "docker compose down -v": ese comando elimina también el volumen
+  de PostgreSQL y se pierden todos los datos locales.
+
+Los datos de PostgreSQL se guardan localmente en volumes\postgres. El código
+Laravel se edita normalmente dentro de la carpeta app.

@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use Faker\Generator as FakerGenerator;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -12,23 +11,27 @@ use RuntimeException;
 class UsuarioSeeder extends Seeder
 {
     /**
-     * Crea 100 usuarios de prueba para el MVP de EcoVoz Urbana:
+     * Crea 40 usuarios de prueba para el MVP de EcoVoz Urbana, con nombre
+     * de usuario simple y predecible (sin depender de Faker):
      *
-     *  - 80 "socios": cada uno con un número de socio único, tomado del
-     *    universo de ~300 socios del Club El Trébol (TI Etapa 1), y rol
-     *    "Socio".
-     *  - 10 usuarios SIN número de socio (id_socio = NULL) con rol
-     *    "Responsable" — ResponsableSeeder los convierte luego en filas
-     *    de la tabla `responsables`.
-     *  - 10 usuarios SIN número de socio con rol "Operador" —
-     *    OperadorSeeder los convierte luego en filas de `operadores`.
+     *  - 20 "socios": socio1..socio20, rol "Socio".
+     *  - 10 "operadores": operador1..operador10, rol "Operador"
+     *    (id_socio = NULL) — OperadorSeeder los convierte luego en filas
+     *    de la tabla `operadores`.
+     *  - 10 "responsables": responsable1..responsable10, rol "Responsable"
+     *    (id_socio = NULL) — ResponsableSeeder los convierte luego en
+     *    filas de la tabla `responsables`.
      *
-     * El nombre de usuario (login) tiene forma de mail ficticio:
-     * "nombre.apellido@mvp.mail". La contraseña de los 100 es "123456",
-     * guardada con el hash bcrypt de Laravel (Hash::make).
+     * La contraseña de los 40 es genérica ("123456"), guardada con el
+     * hash bcrypt de Laravel (Hash::make): no se valida en este MVP.
      *
-     * Cada usuario recibe además `apellido_nombres` ("Apellido, Nombre"),
-     * derivado del mismo nombre/apellido inventado que da forma al mail.
+     * `apellido_nombres` se genera al azar con Faker (locale es_AR),
+     * alternando género par/impar para una mezcla pareja de hombres y
+     * mujeres con nombres típicos argentinos.
+     *
+     * Antes de crearlos, se borra todo el contenido de `usuarios` (el
+     * borrado hace cascade sobre `operadores`/`responsables`), así el
+     * seeder puede volver a correrse para repoblar la tabla desde cero.
      *
      * Los roles se buscan por nombre en la tabla `roles` (no se
      * hardcodean IDs), así que este seeder depende de RoleSeeder.
@@ -45,68 +48,59 @@ class UsuarioSeeder extends Seeder
             );
         }
 
+        // `incidencias` tiene FK RESTRICT hacia `usuarios`: hay que borrarlas
+        // primero (esto además hace cascade sobre `historial_estado_incidencia`
+        // e `incidencias_responsables`) para poder vaciar `usuarios` sin chocar
+        // con esa restricción. El delete de `usuarios` hace cascade sobre
+        // `operadores`/`responsables`.
+        DB::table('incidencias')->delete();
+        DB::table('usuarios')->delete();
+
+        $contrasena = Hash::make('123456');
+        $ahora = now();
         $faker = fake('es_AR');
-        $usados = [];
 
-        // 80 números de socio únicos dentro del universo de socios del club.
-        $numerosSocio = collect(range(1, 300))->shuffle()->take(80)->values();
-
-        foreach ($numerosSocio as $numeroSocio) {
-            $this->crearUsuario($faker, $usados, $idRolSocio, (int) $numeroSocio);
+        for ($i = 1; $i <= 20; $i++) {
+            $this->crearUsuario($idRolSocio, "socio{$i}", $this->nombreAleatorio($faker, $i), $contrasena, $ahora, $i);
         }
 
-        for ($i = 0; $i < 10; $i++) {
-            $this->crearUsuario($faker, $usados, $idRolResponsable, null);
+        for ($i = 1; $i <= 10; $i++) {
+            $this->crearUsuario($idRolOperador, "operador{$i}", $this->nombreAleatorio($faker, $i), $contrasena, $ahora, null);
         }
 
-        for ($i = 0; $i < 10; $i++) {
-            $this->crearUsuario($faker, $usados, $idRolOperador, null);
+        for ($i = 1; $i <= 10; $i++) {
+            $this->crearUsuario($idRolResponsable, "responsable{$i}", $this->nombreAleatorio($faker, $i), $contrasena, $ahora, null);
         }
-    }
-
-    private function crearUsuario(FakerGenerator $faker, array &$usados, int $idRol, ?int $idSocio): void
-    {
-        $nombre = $faker->firstName();
-        $apellido = $faker->lastName();
-
-        $fechaCreacion = $faker->dateTimeBetween('-1 year', '-1 week');
-
-        // 80% de los usuarios ya accedió alguna vez; el resto nunca inició sesión.
-        $fechaUltimoAcceso = $faker->boolean(80)
-            ? $faker->dateTimeBetween($fechaCreacion, 'now')
-            : null;
-
-        DB::table('usuarios')->insert([
-            'id_socio' => $idSocio,
-            'id_rol' => $idRol,
-            'nombre_usuario' => $this->generarUsername($nombre, $apellido, $usados),
-            'apellido_nombres' => Str::title($apellido).', '.Str::title($nombre),
-            'contrasena' => Hash::make('123456'),
-            'fecha_creacion' => $fechaCreacion,
-            'fecha_ultimo_acceso' => $fechaUltimoAcceso,
-        ]);
     }
 
     /**
-     * Genera "nombre.apellido@mvp.mail" en minúsculas y sin acentos,
-     * agregando un sufijo numérico si ya existe (evita chocar con el
-     * UNIQUE de `nombre_usuario`).
+     * Nombre y apellido argentinos al azar, alternando géneros para
+     * lograr una mezcla pareja de hombres y mujeres.
      */
-    private function generarUsername(string $nombre, string $apellido, array &$usados): string
+    private function nombreAleatorio(\Faker\Generator $faker, int $indice): string
     {
-        $base = strtolower(Str::ascii($nombre)).'.'.strtolower(Str::ascii($apellido));
-        $base = preg_replace('/[^a-z.]/', '', $base);
+        $nombre = $indice % 2 === 0 ? $faker->firstNameFemale() : $faker->firstNameMale();
+        $apellido = $faker->lastName();
 
-        $username = $base.'@mvp.mail';
-        $sufijo = 1;
+        return Str::title($apellido).', '.Str::title($nombre);
+    }
 
-        while (in_array($username, $usados, true)) {
-            $sufijo++;
-            $username = $base.$sufijo.'@mvp.mail';
-        }
-
-        $usados[] = $username;
-
-        return $username;
+    private function crearUsuario(
+        int $idRol,
+        string $nombreUsuario,
+        string $apellidoNombres,
+        string $contrasena,
+        $fechaCreacion,
+        ?int $idSocio
+    ): void {
+        DB::table('usuarios')->insert([
+            'id_socio' => $idSocio,
+            'id_rol' => $idRol,
+            'nombre_usuario' => $nombreUsuario,
+            'apellido_nombres' => $apellidoNombres,
+            'contrasena' => $contrasena,
+            'fecha_creacion' => $fechaCreacion,
+            'fecha_ultimo_acceso' => null,
+        ]);
     }
 }

@@ -20,7 +20,7 @@ docker compose up -d
 docker compose down
 ```
 
-Los datos de PostgreSQL persisten en `./volumes/postgres`, las dependencias PHP se guardan en un volumen Docker y el código Laravel vive en `./app`. Así, un `docker compose down` seguido de `docker compose up -d` no pierde nada. No usar `docker compose down -v`.
+Los datos de PostgreSQL persisten en `./volumes/postgres` y el código Laravel (incluido `vendor`, tras `composer install`) vive en `./app`. Así, un `docker compose down` seguido de `docker compose up -d` no pierde nada. No usar `docker compose down -v`.
 
 ## Acceder a la aplicación
 

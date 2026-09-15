@@ -6,11 +6,12 @@ services:
     restart: unless-stopped
     working_dir: /var/www/html
     volumes:
+      # vendor NO se mapea a un volumen aparte: un volumen anidado dentro de
+      # este bind mount puede quedar en un estado en el que el propio punto
+      # de montaje no se puede borrar ("could not delete .../vendor") en un
+      # clon nuevo, tanto en Windows como en Linux. Composer usa este mismo
+      # ./app, así que vendor es un directorio normal dentro del bind mount.
       - ./app:/var/www/html
-      # Las dependencias de PHP contienen miles de archivos. Mantenerlas en
-      # un volumen Docker evita la latencia del montaje de Windows, mientras
-      # el código de ./app sigue disponible para editar desde el IDE.
-      - laravel_vendor:/var/www/html/vendor
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,6 +55,3 @@ services:
 networks:
   mvp:
     driver: bridge
-
-volumes:
-  laravel_vendor:

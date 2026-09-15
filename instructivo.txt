@@ -1,0 +1,107 @@
+INSTRUCTIVO RÁPIDO - EcoReporte (MVP Gestión de Incidencias)
+
+REQUISITOS
+- Git.
+- Docker Desktop instalado, abierto y en ejecución (incluye Docker Compose).
+- Conexión a Internet (primera vez, para descargar imágenes y dependencias).
+
+No hace falta instalar PHP, Composer, PostgreSQL ni Node.js: todo corre
+dentro de Docker.
+
+
+PASOS (Windows / PowerShell o Linux / bash, los comandos son iguales)
+
+1. Clonar el repositorio y entrar en la carpeta:
+
+   git clone https://github.com/Aleushuaia/mvp-mtd.git
+   cd mvp-mtd
+
+2. Crear el .env de Laravel a partir del ejemplo:
+
+   Copy-Item app\.env.example app\.env      (PowerShell)
+   cp app/.env.example app/.env             (Linux/Mac)
+
+3. Abrir app\.env y dejar estas variables así (APP_KEY queda vacío, se
+   genera en el paso 6):
+
+   APP_URL=http://localhost:8080
+   DB_CONNECTION=pgsql
+   DB_HOST=postgres
+   DB_PORT=5432
+   DB_DATABASE=mvp
+   DB_USERNAME=mvp
+   DB_PASSWORD=mvp
+
+4. Construir e iniciar los contenedores:
+
+   docker compose up -d --build
+
+   (Se crean mvp-app, mvp-nginx en :8080 y mvp-postgres. La primera vez
+   tarda varios minutos porque compila extensiones de PHP.)
+
+5. Instalar dependencias PHP:
+
+   docker compose exec app composer install
+
+6. Generar la clave de la app y cargar la base de datos de demostración:
+
+   docker compose exec app php artisan key:generate
+   docker compose exec app php artisan migrate --seed
+
+7. Abrir en el navegador:
+
+   http://localhost:8080
+
+
+IMPORTANTE: si "composer install" tira "could not delete .../vendor"
+
+Ese error viene de una versión vieja de docker-compose.yml que montaba
+"vendor" como un volumen Docker aparte, anidado dentro del bind mount de
+./app. Ya está corregido en el repo actual: "vendor" es ahora una carpeta
+normal dentro de ./app. Si te aparece igual, asegurate de tener el
+docker-compose.yml más reciente (git pull) y de no tener un volumen viejo
+dando vueltas: docker compose down y volver a levantar con
+"docker compose up -d --build".
+
+
+INGRESO A LA DEMO
+
+Pide solo nombre de usuario, no contraseña (todas las cuentas de prueba
+tienen igual la clave genérica "123456"). El seeder crea 40 usuarios fijos:
+
+   - Socios:        socio1 ... socio20        (20)
+   - Operadores:    operador1 ... operador10   (10)
+   - Responsables:  responsable1 ... responsable10 (10)
+
+El nombre y apellido que se ve en pantalla es aleatorio (nombres
+argentinos, mitad varones y mitad mujeres) y no afecta el login. Para
+entrar, usar cualquiera de esos nombres de usuario, por ejemplo: socio1,
+operador1 o responsable1.
+
+
+COMANDOS ÚTILES
+
+Detener sin borrar datos:        docker compose down
+Volver a iniciar:                docker compose up -d
+Ver logs:                        docker compose logs -f
+Correr los tests:                docker compose exec app php artisan test
+Resetear TODA la base (borra datos locales):
+   docker compose exec app php artisan migrate:fresh --seed
+Repoblar solo los usuarios de prueba (borra usuarios + incidencias +
+historial relacionado y recrea los 40 usuarios):
+   docker compose exec app php artisan db:seed --class=UsuarioSeeder
+   docker compose exec app php artisan db:seed --class=OperadorSeeder
+   docker compose exec app php artisan db:seed --class=ResponsableSeeder
+
+NUNCA usar "docker compose down -v": borra también el volumen de
+PostgreSQL y se pierde todo.
+
+
+PROBLEMAS FRECUENTES
+
+- Docker Desktop cerrado -> los comandos "docker compose" fallan.
+- Puerto 8080 o 5432 ocupado -> cambiar APP_PORT / POSTGRES_PORT en el
+  .env de la raíz del proyecto (ya existe con valores por defecto). Si
+  cambiás APP_PORT, actualizar también APP_URL en app\.env.
+- La app no abre -> docker compose ps y docker compose logs -f nginx app
+  postgres.

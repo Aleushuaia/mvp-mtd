@@ -24,6 +24,18 @@ class OperadorIncidenciasTest extends TestCase
         ]]);
     }
 
+    public function test_por_defecto_muestra_incidencias_en_cualquier_estado(): void
+    {
+        $pendiente = $this->crearIncidencia(Incidencia::ESTADO_PENDIENTE, 'Pendiente visible por defecto');
+        $enProceso = $this->crearIncidenciaEnProceso();
+
+        $this->get(route('operador.incidencias.index'))
+            ->assertOk()
+            ->assertSee('Pendiente visible por defecto')
+            ->assertSee('#'.$enProceso->id_incidencia)
+            ->assertViewHas('incidencias', fn ($incidencias) => $incidencias->count() === 2);
+    }
+
     public function test_el_operador_puede_cancelar_una_incidencia_en_proceso_con_motivo_obligatorio(): void
     {
         $incidencia = $this->crearIncidenciaEnProceso();
@@ -74,6 +86,11 @@ class OperadorIncidenciasTest extends TestCase
 
     private function crearIncidenciaEnProceso(): Incidencia
     {
+        return $this->crearIncidencia(Incidencia::ESTADO_EN_PROCESO, 'Reclamo para cancelar desde el operador.');
+    }
+
+    private function crearIncidencia(int $estado, string $descripcion): Incidencia
+    {
         $socio = Usuario::where('id_rol', Usuario::ROL_SOCIO)->firstOrFail();
 
         return Incidencia::create([
@@ -81,9 +98,9 @@ class OperadorIncidenciasTest extends TestCase
             'id_usuario_alta' => $socio->id,
             'id_tipo_incidencia' => 1,
             'id_ubicacion' => 1,
-            'id_estado_incidencia' => Incidencia::ESTADO_EN_PROCESO,
+            'id_estado_incidencia' => $estado,
             'id_criticidad' => Incidencia::CRITICIDAD_NORMAL,
-            'descripcion' => 'Reclamo para cancelar desde el operador.',
+            'descripcion' => $descripcion,
             'fecha_hora_evento' => now()->subHour(),
             'fecha_hora_alta' => now(),
         ]);

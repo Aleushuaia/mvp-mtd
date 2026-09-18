@@ -382,6 +382,13 @@ small,
     border-bottom: 2px solid var(--tr-border);
 }
 
+/* Tablas de incidencias (Mis incidencias / panel del operador): header
+   con mayúscula inicial por palabra (no todo en mayúsculas) y centrado. */
+.table-incidencias thead th {
+    text-transform: capitalize;
+    text-align: center;
+}
+
 /* ============================================================
    Circuito de incidencias (Socio)
    ============================================================ */
@@ -486,12 +493,28 @@ small,
     border-radius: 999px;
 }
 
-.estado-badge--borrador { background: #64748b; }
-.estado-badge--pendiente { background: #b7791f; }
-.estado-badge--confirmada { background: #23814a; }
-.estado-badge--en-proceso { background: #8067a8; }
-.estado-badge--resuelta { background: #2469a5; }
-.estado-badge--cancelada { background: #c85a63; }
+/* Los mismos selectores fijan el color del badge de Estado y del filtro de
+   arriba, para que ambos queden siempre iguales. */
+.estado-badge--borrador,
+.estado-selector__opcion--borrador { background: #64748b; }
+.estado-badge--pendiente,
+.estado-selector__opcion--pendiente { background: #b7791f; }
+.estado-badge--confirmada,
+.estado-selector__opcion--confirmada { background: #23814a; }
+.estado-badge--en-proceso,
+.estado-selector__opcion--en-proceso { background: #8067a8; }
+.estado-badge--resuelta,
+.estado-selector__opcion--resuelta { background: #2469a5; }
+.estado-badge--cancelada,
+.estado-selector__opcion--cancelada { background: #c85a63; }
+
+/* Badge de la columna Estado: mismo color, tamaño y tipografía que el
+   filtro de arriba (la barra de filtros es la base y siempre manda). */
+.estado-badge--compacto {
+    font-size: .675rem;
+    letter-spacing: normal;
+    padding: .2rem .37rem;
+}
 
 .crit-normal { background: #3c9142; }
 .crit-urgente { background: #c98300; }
@@ -715,18 +738,18 @@ small,
 .estado-selector__opciones {
     display: flex;
     flex-wrap: wrap;
-    gap: .4rem;
+    gap: .3rem;
 }
 
 .estado-selector__opcion {
     display: inline-flex;
     align-items: center;
-    gap: .35rem;
-    min-height: 30px;
-    padding: .3rem .55rem;
+    gap: .235rem;
+    min-height: 20.25px;
+    padding: .2rem .37rem;
     border-radius: 999px;
     color: #fff;
-    font-size: 1rem;
+    font-size: .675rem;
     font-weight: 600;
     cursor: pointer;
     opacity: .52;
@@ -744,18 +767,18 @@ small,
 }
 
 .estado-selector__opcion input {
-    width: .9rem;
-    height: .9rem;
+    width: .61rem;
+    height: .61rem;
     margin: 0;
     accent-color: #fff;
 }
 
-.estado-selector__opcion--borrador { background: #64748b; }
-.estado-selector__opcion--pendiente { background: #b7791f; }
-.estado-selector__opcion--confirmada { background: #23814a; }
-.estado-selector__opcion--en-proceso { background: #8067a8; }
-.estado-selector__opcion--resuelta { background: #2469a5; }
-.estado-selector__opcion--cancelada { background: #c85a63; }
+.estado-selector__opcion--todos {
+    background: #fff;
+    color: var(--tr-green-900);
+    border: 1px solid var(--tr-border);
+}
+.estado-selector__opcion--todos input { accent-color: var(--tr-green-900); }
 
 /* ---------- Chips de responsable ---------- */
 .resp-chip {

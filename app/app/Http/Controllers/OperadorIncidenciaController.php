@@ -8,7 +8,6 @@ use App\Models\HistorialEstadoIncidencia;
 use App\Models\Incidencia;
 use App\Models\Responsable;
 use App\Models\Usuario;
-use App\Simulacion\Simulador;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,26 +26,31 @@ use Illuminate\View\View;
  */
 class OperadorIncidenciaController extends Controller
 {
-    public function __construct(private readonly Simulador $simulador) {}
-
     public function index(Request $request): View
     {
         $this->operadorId();
 
-        // "El sistema en uso": procesa asignaciones y resoluciones automáticas maduras.
-        $this->simulador->ejecutarTodas();
+        $estados = EstadoIncidencia::orderBy('id_estado')->get();
+
+        $filtros = $request->only(['numero', 'descripcion', 'estado']);
+        // El panel del operador abre con "Todos" tildado: sin filtro
+        // explícito de estado se muestran las incidencias en cualquier estado.
+        if (! $request->has('estado')) {
+            $filtros['estado'] = $estados->pluck('id_estado')->all();
+        }
 
         $incidencias = Incidencia::with([
             'tipo', 'ubicacion', 'estado', 'criticidad', 'usuario', 'responsables.usuario',
         ])
-            ->filtrar($request->only(['numero', 'descripcion', 'estado']))
+            ->filtrar($filtros)
             ->orderByDesc('fecha_hora_alta')
             ->orderByDesc('id_incidencia')
             ->get();
 
         return view('operador.incidencias.index', [
             'incidencias' => $incidencias,
-            'estados' => EstadoIncidencia::orderBy('id_estado')->get(),
+            'estados' => $estados,
+            'totalIncidencias' => Incidencia::count(),
         ]);
     }
 

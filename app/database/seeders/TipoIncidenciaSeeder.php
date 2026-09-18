@@ -22,8 +22,7 @@ class TipoIncidenciaSeeder extends Seeder
             ['id' => 3, 'nombre' => 'Plagas'],
             ['id' => 4, 'nombre' => 'Malos olores'],
             ['id' => 5, 'nombre' => 'Desagües'],
-            ['id' => 6, 'nombre' => 'Daño alambre perimetral'],
-            ['id' => 7, 'nombre' => 'Otros'],
+            ['id' => 6, 'nombre' => 'Otros'],
         ];
 
         foreach ($tipos as $tipo) {

@@ -8,5 +8,6 @@
         'Cancelada' => 'estado-badge--cancelada',
     ];
     $clase = $mapaEstados[$nombre] ?? 'estado-badge--borrador';
+    $compacto = $compacto ?? false;
 @endphp
-<span class="badge estado-badge {{ $clase }}">{{ $nombre }}</span>
+<span class="badge estado-badge {{ $clase }} @if ($compacto) estado-badge--compacto @endif">{{ $nombre }}</span>

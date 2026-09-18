@@ -18,7 +18,7 @@
         <div class="alert alert-danger" role="alert">{{ session('error') }}</div>
     @endif
 
-    @include('incidencias.partials.filtros', ['action' => route('incidencias.index'), 'estados' => $estados])
+    @include('incidencias.partials.filtros', ['action' => route('incidencias.index'), 'estados' => $estados, 'todosPorDefecto' => true])
 
     @php($hayFiltros = request()->hasAny(['numero', 'descripcion', 'estado']))
 
@@ -28,7 +28,7 @@
             @if ($hayFiltros)
                 <h2 class="h6 mb-1">Sin resultados</h2>
                 <p class="text-muted mb-3">Ninguna de sus incidencias coincide con los filtros aplicados.</p>
-                <a href="{{ route('incidencias.index') }}" class="btn btn-outline-trebol">Quitar filtros</a>
+                <a href="{{ route('incidencias.index') }}" class="btn btn-outline-trebol">Limpiar campos</a>
             @else
                 <h2 class="h6 mb-1">Todavía no tiene incidencias registradas</h2>
                 <p class="text-muted mb-3">Cuando registre un reclamo, aparecerá en esta lista.</p>
@@ -61,7 +61,7 @@
                                 <td class="text-nowrap">{{ $incidencia->fecha_hora_evento->format('d/m/Y H:i') }}</td>
                                 <td class="celda-descripcion">{{ $incidencia->descripcion }}</td>
                                 <td>
-                                    @include('incidencias.partials.estado-badge', ['nombre' => $incidencia->estado->nombre])
+                                    @include('incidencias.partials.estado-badge', ['nombre' => $incidencia->estado->nombre, 'compacto' => true])
                                     <div class="mini-responsable">
                                         @if ($resp)
                                             {{ $resp->usuario->apellido_nombres ?? '—' }}
@@ -110,6 +110,8 @@
             @endforeach
         </div>
     @endif
+
+    <p class="text-muted small mt-2">{{ $incidencias->count() }} de {{ $totalIncidencias }} incidencia(s) en total</p>
 
     {{-- ================= Modal: historial de estados ================= --}}
     <div class="modal fade" id="modalHistorial" tabindex="-1" aria-labelledby="modalHistorialTitulo" aria-hidden="true">

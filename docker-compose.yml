@@ -2,6 +2,7 @@ services:
   app:
     build:
       context: ./docker/php
+    image: mvp-mtd-php
     container_name: mvp-app
     restart: unless-stopped
     working_dir: /var/www/html
@@ -11,6 +12,24 @@ services:
       # de montaje no se puede borrar ("could not delete .../vendor") en un
       # clon nuevo, tanto en Windows como en Linux. Composer usa este mismo
       # ./app, así que vendor es un directorio normal dentro del bind mount.
+      - ./app:/var/www/html
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mvp
+
+  scheduler:
+    build:
+      context: ./docker/php
+    image: mvp-mtd-php
+    container_name: mvp-scheduler
+    restart: unless-stopped
+    working_dir: /var/www/html
+    # "El sistema en uso": corre simulacion:ejecutar cada 10s (routes/console.php)
+    # en vez de dispararse desde las pantallas de incidencias.
+    command: php artisan schedule:work
+    volumes:
       - ./app:/var/www/html
     depends_on:
       postgres:

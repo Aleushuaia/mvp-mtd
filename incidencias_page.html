@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="OurEMZEYUDVp41BhmsSGBSAH2sy0eRzi07DZ7e8M">
+    <title>Mis incidencias · EcoReporte</title>
+    <link rel="icon" type="image/png" href="http://localhost:8080/img/trebol.png">
+    <link rel="apple-touch-icon" href="http://localhost:8080/img/trebol.png">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="http://localhost:8080/css/app.css?v=1789686310" rel="stylesheet">
+<script id="browser-logger-active">
+(function() {
+    const ENDPOINT = 'http://localhost:8080/_boost/browser-logs';
+    const logQueue = [];
+    let flushTimeout = null;
+    const captureTypes = ["error","warning","info","log","debug","table"];
+
+    console.log('🔍 Browser logger active (MCP server detected). Posting to: ' + ENDPOINT);
+
+    // Store original console methods
+    const originalConsole = {
+        log: console.log,
+        debug: console.debug,
+        info: console.info,
+        error: console.error,
+        warn: console.warn,
+        table: console.table
+    };
+
+    // Walk own enumerable keys so JSON.stringify cannot auto-invoke a proxy fake toJSON (e.g. Livewire's `$wire`) and fire a real request.
+    function toSafeValue(value, seen) {
+        if (value === null || typeof value !== 'object') {
+            return value;
+        }
+        if (value instanceof Error) {
+            return { name: value.name, message: value.message, stack: value.stack };
+        }
+        // Date has no own enumerable keys, so the walk below would collapse it to {}.
+        if (value instanceof Date) {
+            return value.toISOString();
+        }
+        if (seen.has(value)) {
+            return '[Circular]';
+        }
+        seen.add(value);
+        if (Array.isArray(value)) {
+            return value.map((item) => toSafeValue(item, seen));
+        }
+        const plain = {};
+        for (const key of Object.keys(value)) {
+            if (key === 'toJSON') continue;
+            try {
+                plain[key] = toSafeValue(value[key], seen);
+            } catch (e) {
+                plain[key] = '[Unreadable]';
+            }
+        }
+        return plain;
+    }
+
+    // Helper to safely stringify values
+    function safeStringify(obj) {
+        return JSON.stringify(toSafeValue(obj, new WeakSet()));
+    }
+
+    // Normalize log type for consistency (e.g., 'warn' to 'warning')
+    function normalizeType(type) {
+        return type === 'warn' ? 'warning' : type;
+    }
+
+    // Determine if a log type should be captured based on configured levels
+    function shouldCapture(type) {
+        return captureTypes.includes(normalizeType(type));
+    }
+
+    // Batch and send logs
+    function flushLogs() {
+        if (logQueue.length === 0) return;
+
+        const batch = logQueue.splice(0, logQueue.length);
+
+        fetch(ENDPOINT, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ logs: batch })
+        }).catch(err => {
+            // Silently fail to avoid infinite loops
+            originalConsole.error('Failed to send logs:', err);
+        });
+    }
+
+    // Debounced flush (100ms)
+    function scheduleFlush() {
+        if (flushTimeout) clearTimeout(flushTimeout);
+        flushTimeout = setTimeout(flushLogs, 100);
+    }
+
+    // Intercept console methods
+    ['log', 'debug', 'info', 'error', 'warn', 'table'].forEach(method => {
+        console[method] = function(...args) {
+            // Call original method
+            originalConsole[method].apply(console, args);
+
+            // Capture log data
+            try {
+                if (!shouldCapture(method)) {
+                    return;
+                }
+
+                logQueue.push({
+                    type: method,
+                    timestamp: new Date().toISOString(),
+                    data: args.map(arg => {
+                        try {
+                            return typeof arg === 'object' ? JSON.parse(safeStringify(arg)) : arg;
+                        } catch (e) {
+                            return String(arg);
+                        }
+                    }),
+                    url: window.location.href,
+                    userAgent: navigator.userAgent
+                });
+
+                scheduleFlush();
+            } catch (e) {
+                // Fail silently
+            }
+        };
+    });
+
+    // Global error handlers for uncaught errors
+    const originalOnError = window.onerror;
+    window.onerror = function boostErrorHandler(errorMsg, url, lineNumber, colNumber, error) {
+        try {
+            if (shouldCapture('error')) {
+                logQueue.push({
+                    type: 'uncaught_error',
+                    timestamp: new Date().toISOString(),
+                    data: [{
+                        message: errorMsg,
+                        filename: url,
+                        lineno: lineNumber,
+                        colno: colNumber,
+                        error: error ? {
+                            name: error.name,
+                            message: error.message,
+                            stack: error.stack
+                        } : null
+                    }],
+                    url: window.location.href,
+                    userAgent: navigator.userAgent
+                });
+
+                scheduleFlush();
+            }
+
+        } catch (e) {
+            // Fail silently
+        }
+
+        // Call original handler if it exists
+        if (originalOnError && typeof originalOnError === 'function') {
+            return originalOnError(errorMsg, url, lineNumber, colNumber, error);
+        }
+
+        // Let the error continue to propagate
+        return false;
+    }
+    window.addEventListener('error', (event) => {
+        try {
+            if (!shouldCapture('error')) {
+                return false;
+            }
+
+            logQueue.push({
+                type: 'window_error',
+                timestamp: new Date().toISOString(),
+                data: [{
+                    message: event.message,
+                    filename: event.filename,
+                    lineno: event.lineno,
+                    colno: event.colno,
+                    error: event.error ? {
+                        name: event.error.name,
+                        message: event.error.message,
+                        stack: event.error.stack
+                    } : null
+                }],
+                url: window.location.href,
+                userAgent: navigator.userAgent
+            });
+
+            scheduleFlush();
+        } catch (e) {
+            // Fail silently
+        }
+
+        // Let the error continue to propagate
+        return false;
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+        try {
+            if (!shouldCapture('error')) {
+                return false;
+            }
+
+            logQueue.push({
+                type: 'error',
+                timestamp: new Date().toISOString(),
+                data: [{
+                    message: 'Unhandled Promise Rejection',
+                    reason: toSafeValue(event.reason, new WeakSet())
+                }],
+                url: window.location.href,
+                userAgent: navigator.userAgent
+            });
+
+            scheduleFlush();
+        } catch (e) {
+            // Fail silently
+        }
+
+        // Let the rejection continue to propagate
+        return false;
+    });
+
+    // Flush on page unload
+    window.addEventListener('beforeunload', () => {
+        if (logQueue.length > 0) {
+            navigator.sendBeacon(ENDPOINT, JSON.stringify({ logs: logQueue }));
+        }
+    });
+})();
+</script>
+</head>
+<body class="app-body">
+
+    
+    <nav class="navbar app-navbar" aria-label="Navegación principal">
+        <div class="container">
+            <a class="navbar-brand" href="http://localhost:8080/ingresar">
+                <img src="http://localhost:8080/img/trebol.png" alt="EcoReporte" class="app-navbar__logo">
+                <span class="app-navbar__brand">
+                    <span class="app-navbar__title">EcoReporte</span>
+                    <span class="app-navbar__subtitle">Gestión de Incidencias</span>
+                                            <span class="app-navbar__rol">Socio</span>
+                                    </span>
+            </a>
+
+                            <div class="dropdown ms-auto">
+                    <button class="btn app-navbar__menu-toggle dropdown-toggle" type="button"
+                            id="appMenu" data-bs-toggle="dropdown" aria-expanded="false"
+                            aria-label="Abrir menú de usuario">
+                        <i class="bi bi-person-circle" aria-hidden="true"></i>
+                        <span class="d-none d-sm-inline">Menú</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end app-navbar__menu" aria-labelledby="appMenu">
+                        <li>
+                            <button type="button" class="dropdown-item" disabled>
+                                <i class="bi bi-person" aria-hidden="true"></i> Mi Perfil
+                            </button>
+                        </li>
+                        <li>
+                            <button type="button" class="dropdown-item" disabled>
+                                <i class="bi bi-gear" aria-hidden="true"></i> Configuraciones
+                            </button>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <form method="POST" action="http://localhost:8080/logout">
+                                <input type="hidden" name="_token" value="OurEMZEYUDVp41BhmsSGBSAH2sy0eRzi07DZ7e8M" autocomplete="off">                                <button type="submit" class="dropdown-item">
+                                    <i class="bi bi-box-arrow-right" aria-hidden="true"></i> Salir
+                                </button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+                    </div>
+    </nav>
+
+    <main class="app-main">
+        <div class="container">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h1 class="page-title h4 mb-0">Mis incidencias</h1>
+            <p class="text-muted mb-0">Reclamos que usted presentó.</p>
+        </div>
+        <a href="http://localhost:8080/incidencias/nueva" class="btn btn-trebol" data-conectividad>+ Nueva incidencia</a>
+    </div>
+
+        
+    <form method="GET" action="http://localhost:8080/incidencias" class="panel filtros-incidencias mb-3" data-filtros-incidencias>
+    <div class="row g-2 align-items-end">
+        <div class="col-6 col-md-1">
+            <label class="form-label" for="f-numero">N.º</label>
+            <input type="number" min="1" class="form-control form-control-sm" id="f-numero"
+                   name="numero" value="" placeholder="Ej. 1004" inputmode="numeric">
+        </div>
+        <div class="col-12 col-md-7">
+            <label class="form-label" for="f-descripcion">Descripción</label>
+            <input type="text" class="form-control form-control-sm" id="f-descripcion"
+                   name="descripcion" value="" placeholder="Texto a buscar…">
+        </div>
+        <fieldset class="col-12 estado-selector" aria-label="Estados de las incidencias">
+            <div class="estado-selector__opciones">
+                <label class="estado-selector__opcion estado-selector__opcion--todos">
+                    <input type="checkbox" data-estado-todos checked                           aria-label="Seleccionar todos los estados">
+                    <span>Todos</span>
+                </label>
+                                                        <label class="estado-selector__opcion estado-selector__opcion--borrador">
+                        <input type="checkbox" name="estado[]" value="1"
+                               checked>
+                        <span>Borrador</span>
+                    </label>
+                                                        <label class="estado-selector__opcion estado-selector__opcion--pendiente">
+                        <input type="checkbox" name="estado[]" value="2"
+                               checked>
+                        <span>Pendiente</span>
+                    </label>
+                                                        <label class="estado-selector__opcion estado-selector__opcion--confirmada">
+                        <input type="checkbox" name="estado[]" value="3"
+                               checked>
+                        <span>Confirmada</span>
+                    </label>
+                                                        <label class="estado-selector__opcion estado-selector__opcion--en-proceso">
+                        <input type="checkbox" name="estado[]" value="4"
+                               checked>
+                        <span>En proceso</span>
+                    </label>
+                                                        <label class="estado-selector__opcion estado-selector__opcion--resuelta">
+                        <input type="checkbox" name="estado[]" value="5"
+                               checked>
+                        <span>Resuelta</span>
+                    </label>
+                                                        <label class="estado-selector__opcion estado-selector__opcion--cancelada">
+                        <input type="checkbox" name="estado[]" value="6"
+                               checked>
+                        <span>Cancelada</span>
+                    </label>
+                            </div>
+        </fieldset>
+        <div class="col-12 d-flex justify-content-end gap-2">
+            <button type="submit" class="btn btn-trebol btn-sm">Filtrar</button>
+            <a href="http://localhost:8080/incidencias" class="btn btn-outline-trebol btn-sm  disabled "
+               data-limpiar-campos title="Limpiar campos" aria-label="Limpiar campos">&times; Limpiar campos</a>
+        </div>
+    </div>
+</form>
+
+    
+    
+            
+        <div class="panel d-none d-lg-block">
+            <div>
+                <table class="table table-incidencias align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>N.º</th>
+                            <th>Tipo</th>
+                            <th>Ubicación</th>
+                            <th>Fecha del hecho</th>
+                            <th>Descripción</th>
+                            <th>Estado / Responsable</th>
+                            <th class="text-end">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                                                                                <tr>
+                                <td class="fw-semibold">#1</td>
+                                <td>Desagües</td>
+                                <td>Quinchos</td>
+                                <td class="text-nowrap">14/09/2026 22:45</td>
+                                <td class="celda-descripcion">sale agua servida</td>
+                                <td>
+                                    <span class="badge estado-badge estado-badge--resuelta">Resuelta</span>
+                                    <div class="mini-responsable">
+                                                                                    Solorio, Valentino
+                                                                            </div>
+                                </td>
+                                <td class="text-end"><div class="acciones-iconos">
+    <a href="http://localhost:8080/incidencias/1"
+       class="btn-icono" data-tooltip title="Ver detalle" aria-label="Ver detalle de la incidencia">
+        <i class="bi bi-eye" aria-hidden="true"></i>
+    </a>
+
+    <button type="button" class="btn-icono" data-tooltip title="Ver historial"
+            aria-label="Ver historial de estados"
+            data-bs-toggle="modal" data-bs-target="#modalHistorial"
+            data-historial-url="http://localhost:8080/incidencias/1/historial"
+            data-numero="1">
+        <i class="bi bi-clock-history" aria-hidden="true"></i>
+    </button>
+
+    
+    
+</div>
+</td>
+                            </tr>
+                                            </tbody>
+                </table>
+            </div>
+        </div>
+
+        
+        <div class="d-lg-none incidencia-cards">
+                                            <div class="panel incidencia-card">
+                    <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                        <span class="fw-semibold">Incidencia #1</span>
+                        <span class="badge estado-badge estado-badge--resuelta">Resuelta</span>
+                    </div>
+                    <dl class="incidencia-card__datos mb-2">
+                        <dt>Tipo</dt><dd>Desagües</dd>
+                        <dt>Ubicación</dt><dd>Quinchos</dd>
+                        <dt>Fecha del hecho</dt><dd>14/09/2026 22:45</dd>
+                        <dt>Responsable</dt>
+                        <dd>
+                                                            Solorio, Valentino
+                                                    </dd>
+                        <dt>Descripción</dt><dd>sale agua servida</dd>
+                    </dl>
+                    <div class="text-end"><div class="acciones-iconos">
+    <a href="http://localhost:8080/incidencias/1"
+       class="btn-icono" data-tooltip title="Ver detalle" aria-label="Ver detalle de la incidencia">
+        <i class="bi bi-eye" aria-hidden="true"></i>
+    </a>
+
+    <button type="button" class="btn-icono" data-tooltip title="Ver historial"
+            aria-label="Ver historial de estados"
+            data-bs-toggle="modal" data-bs-target="#modalHistorial"
+            data-historial-url="http://localhost:8080/incidencias/1/historial"
+            data-numero="1">
+        <i class="bi bi-clock-history" aria-hidden="true"></i>
+    </button>
+
+    
+    
+</div>
+</div>
+                </div>
+                    </div>
+    
+    
+    <div class="modal fade" id="modalHistorial" tabindex="-1" aria-labelledby="modalHistorialTitulo" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h6" id="modalHistorialTitulo">Historial de la incidencia</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="historialEstado" class="text-muted small mb-3">Cargando…</p>
+                    <ol id="historialLista" class="timeline"></ol>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-trebol" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalCancelarIncidencia" tabindex="-1"
+         aria-labelledby="modalCancelarIncidenciaTitulo" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <form id="formCancelarIncidencia" method="POST" data-conectividad-skip>
+                <input type="hidden" name="_token" value="OurEMZEYUDVp41BhmsSGBSAH2sy0eRzi07DZ7e8M" autocomplete="off">                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 class="modal-title h6" id="modalCancelarIncidenciaTitulo">Cancelar incidencia</h2>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p id="cancelarIncidenciaAyuda" class="mb-3"></p>
+                        <label for="comentarioCancelacion" class="form-label">Motivo de la cancelación</label>
+                        <textarea id="comentarioCancelacion" name="comentario_cancelacion" class="form-control"
+                                  rows="4" maxlength="200" required aria-describedby="ayudaComentarioCancelacion"></textarea>
+                        <div id="ayudaComentarioCancelacion" class="form-text">Obligatorio. Máximo 200 caracteres.</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-trebol" data-bs-dismiss="modal">Volver</button>
+                        <button type="submit" class="btn btn-danger">Confirmar cancelación</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+        </div>
+    </main>
+
+    <footer class="app-footer">
+        EcoReporte &middot; Gestión de Incidencias
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="http://localhost:8080/js/conectividad.js?v=1789432759"></script>
+        <script>
+        document.querySelectorAll('[data-filtros-incidencias]').forEach(function (form) {
+            var todos = form.querySelector('[data-estado-todos]');
+            var estados = form.querySelectorAll('input[name="estado[]"]');
+
+            function sincronizarTodos() {
+                if (!todos) {
+                    return;
+                }
+                var marcados = Array.prototype.filter.call(estados, function (item) { return item.checked; });
+                todos.checked = estados.length > 0 && marcados.length === estados.length;
+            }
+
+            estados.forEach(function (estado) {
+                estado.addEventListener('change', function () {
+                    var haySeleccion = Array.prototype.some.call(estados, function (item) { return item.checked; });
+                    if (!haySeleccion) {
+                        estado.checked = true;
+                    }
+                    sincronizarTodos();
+                });
+            });
+
+            if (todos) {
+                todos.addEventListener('change', function () {
+                    // Atajo "marcar todo": el formulario siempre exige al
+                    // menos un estado, así que destildar "Todos" no aplica.
+                    estados.forEach(function (estado) { estado.checked = true; });
+                    sincronizarTodos();
+                });
+            }
+
+            sincronizarTodos();
+
+            var limpiar = form.querySelector('[data-limpiar-campos]');
+            var camposTexto = form.querySelectorAll('input[name="numero"], input[name="descripcion"]');
+
+            function sincronizarLimpiar() {
+                if (!limpiar) {
+                    return;
+                }
+                var hayTexto = Array.prototype.some.call(camposTexto, function (campo) {
+                    return campo.value.trim() !== '';
+                });
+                limpiar.classList.toggle('disabled', !hayTexto);
+            }
+
+            camposTexto.forEach(function (campo) {
+                campo.addEventListener('input', sincronizarLimpiar);
+            });
+
+            sincronizarLimpiar();
+        });
+    </script>
+    <script>
+(function () {
+    // ---------- Modal de historial (carga por fetch) ----------
+    var modalHistorial = document.getElementById('modalHistorial');
+    if (modalHistorial) {
+        modalHistorial.addEventListener('show.bs.modal', function (event) {
+            var t = event.relatedTarget;
+            if (!t) return;
+            var url = t.getAttribute('data-historial-url');
+            var numero = t.getAttribute('data-numero');
+            var lista = document.getElementById('historialLista');
+            var estadoTxt = document.getElementById('historialEstado');
+            document.getElementById('modalHistorialTitulo').textContent = 'Historial · Incidencia #' + numero;
+            lista.innerHTML = '';
+            estadoTxt.textContent = 'Cargando…';
+
+            fetch(url, { headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    var eventos = data.eventos || [];
+                    if (!eventos.length) { estadoTxt.textContent = 'Sin movimientos registrados.'; return; }
+                    estadoTxt.textContent = eventos.length + ' movimiento(s) registrado(s).';
+                    eventos.forEach(function (ev) {
+                        var li = document.createElement('li');
+                        li.className = 'timeline__item';
+                        var transicion = ev.desde ? (ev.desde + ' → ' + ev.hasta) : ('Alta → ' + ev.hasta);
+                        li.innerHTML =
+                            '<div class="timeline__dot"></div>' +
+                            '<div class="timeline__body">' +
+                              '<div class="timeline__head"><strong>' + transicion + '</strong>' +
+                              '<span class="timeline__fecha">' + ev.fecha + '</span></div>' +
+                              (ev.comentario ? '<div class="timeline__coment">' + ev.comentario + '</div>' : '') +
+                              '<div class="timeline__user">Por: ' + ev.usuario + '</div>' +
+                            '</div>';
+                        lista.appendChild(li);
+                    });
+                })
+                .catch(function () { estadoTxt.textContent = 'No se pudo cargar el historial.'; });
+        });
+    }
+
+    // ---------- Modal de cancelación ----------
+    var modalCancelar = document.getElementById('modalCancelarIncidencia');
+    if (modalCancelar) {
+        modalCancelar.addEventListener('show.bs.modal', function (event) {
+            var activador = event.relatedTarget;
+            if (!activador) return;
+
+            var formulario = document.getElementById('formCancelarIncidencia');
+            var comentario = document.getElementById('comentarioCancelacion');
+            var numero = activador.getAttribute('data-numero');
+
+            formulario.action = activador.getAttribute('data-cancelar-url');
+            comentario.value = '';
+            document.getElementById('cancelarIncidenciaAyuda').textContent =
+                '¿Desea cancelar la incidencia #' + numero + '? Esta acción cambiará su estado a Cancelada.';
+        });
+
+        modalCancelar.addEventListener('shown.bs.modal', function () {
+            document.getElementById('comentarioCancelacion').focus();
+        });
+    }
+
+    // ---------- Tooltips de los botones-icono de acciones ----------
+    document.querySelectorAll('[data-tooltip][title]').forEach(function (el) {
+        new bootstrap.Tooltip(el, { trigger: 'hover', container: 'body' });
+    });
+
+})();
+</script>
+</body>
+</html>

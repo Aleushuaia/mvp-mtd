@@ -12,12 +12,12 @@ use Illuminate\Support\Facades\DB;
  *
  * Regla del MVP: unos segundos después de que una incidencia entró en
  * «En proceso» (ya tiene responsable asignado), "ingresa" un operador
- * cualquiera —no necesariamente el que asignó el responsable— y la marca
- * como «Resuelta» con una probabilidad del 50 %. Las demás permanecen
- * «En proceso»; la decisión se guarda y no vuelve a sortearse.
- *
- * Igual que SimuladorAsignaciones, es perezosa: se dispara al navegar por
- * las pantallas de incidencias.
+ * cualquiera —no necesariamente el que asignó el responsable— y decide si
+ * la marca como «Resuelta» o la deja «En proceso»; la decisión se guarda y
+ * no vuelve a sortearse. En vez de una moneda 50/50, la probabilidad se
+ * inclina hacia el estado (Resuelta / En proceso) que tenga MENOS
+ * incidencias en toda la base —no sólo las del socio de este reclamo— para
+ * que ambos caminos terminen con cantidades parejas en el panorama general.
  */
 class SimuladorResoluciones implements Simulacion
 {
@@ -101,9 +101,21 @@ class SimuladorResoluciones implements Simulacion
         });
     }
 
+    /**
+     * Se inclina por el estado (Resuelta / En proceso) menos representado en
+     * toda la base de incidencias, para emparejar ambos caminos en el
+     * panorama general en vez de por socio individual.
+     */
     protected function debeResolver(): bool
     {
-        return random_int(0, 1) === 1;
+        $resueltas = Incidencia::where('id_estado_incidencia', Incidencia::ESTADO_RESUELTA)->count();
+        $enProceso = Incidencia::where('id_estado_incidencia', Incidencia::ESTADO_EN_PROCESO)->count();
+
+        if ($resueltas === $enProceso) {
+            return random_int(0, 1) === 1;
+        }
+
+        return $resueltas < $enProceso;
     }
 
     /** Cuenta desde la entrada a En proceso, sin reiniciar por cambios de criticidad. */

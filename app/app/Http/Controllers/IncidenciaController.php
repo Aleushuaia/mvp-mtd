@@ -8,7 +8,6 @@ use App\Models\Incidencia;
 use App\Models\TipoIncidencia;
 use App\Models\Ubicacion;
 use App\Models\Usuario;
-use App\Simulacion\Simulador;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -42,26 +41,30 @@ use Illuminate\View\View;
  */
 class IncidenciaController extends Controller
 {
-    public function __construct(private readonly Simulador $simulador) {}
-
     /** "Mis incidencias": sólo las que presentó el propio socio. */
     public function index(Request $request): View
     {
         $socioId = $this->socioId();
 
-        // "El sistema en uso": procesa asignaciones y resoluciones automáticas maduras.
-        $this->simulador->ejecutarTodas();
+        $estados = EstadoIncidencia::orderBy('id_estado')->get();
+
+        $filtros = $request->only(['numero', 'descripcion', 'estado']);
+        // "Mis incidencias" abre con "Todos" tildado: sin filtro explícito
+        // de estado se muestran las incidencias en cualquier estado.
+        if (! $request->has('estado')) {
+            $filtros['estado'] = $estados->pluck('id_estado')->all();
+        }
 
         $incidencias = Incidencia::with(['tipo', 'ubicacion', 'estado', 'criticidad', 'responsables.usuario'])
             ->where('id_usuario', $socioId)
-            ->filtrar($request->only(['numero', 'descripcion', 'estado']))
+            ->filtrar($filtros)
             ->orderByDesc('fecha_hora_alta')
             ->orderByDesc('id_incidencia')
             ->get();
 
-        $estados = EstadoIncidencia::orderBy('id_estado')->get();
+        $totalIncidencias = Incidencia::where('id_usuario', $socioId)->count();
 
-        return view('incidencias.index', compact('incidencias', 'estados'));
+        return view('incidencias.index', compact('incidencias', 'estados', 'totalIncidencias'));
     }
 
     /** Formulario de alta. */
@@ -187,10 +190,6 @@ class IncidenciaController extends Controller
     public function show(Incidencia $incidencia): View
     {
         $this->autorizar($incidencia);
-
-        // "El sistema en uso": procesa asignaciones / resoluciones automáticas maduras.
-        $this->simulador->ejecutarTodas();
-        $incidencia->refresh();
 
         $incidencia->load([
             'tipo', 'ubicacion', 'estado', 'criticidad', 'usuarioAlta',

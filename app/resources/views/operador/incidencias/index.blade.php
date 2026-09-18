@@ -8,14 +8,13 @@
             <h1 class="page-title h4 mb-0">Incidencias</h1>
             <p class="text-muted mb-0">Todas las incidencias del club — panel del operador.</p>
         </div>
-        <span class="text-muted small">{{ $incidencias->count() }} resultado(s)</span>
     </div>
 
     @if (session('ok'))
         <div class="alert alert-success" role="alert">{{ session('ok') }}</div>
     @endif
 
-    @include('incidencias.partials.filtros', ['action' => route('operador.incidencias.index'), 'estados' => $estados])
+    @include('incidencias.partials.filtros', ['action' => route('operador.incidencias.index'), 'estados' => $estados, 'todosPorDefecto' => true])
 
     @php($hayFiltros = request()->hasAny(['numero', 'descripcion', 'estado']))
 
@@ -27,7 +26,7 @@
                 @if ($hayFiltros) Ninguna incidencia coincide con los filtros aplicados. @else Todavía no hay incidencias registradas. @endif
             </p>
             @if ($hayFiltros)
-                <a href="{{ route('operador.incidencias.index') }}" class="btn btn-outline-trebol">Quitar filtros</a>
+                <a href="{{ route('operador.incidencias.index') }}" class="btn btn-outline-trebol">Limpiar campos</a>
             @endif
         </div>
     @else
@@ -55,7 +54,7 @@
                                 <td>{{ $incidencia->tipo->nombre }}</td>
                                 <td>{{ $incidencia->ubicacion->nombre }}</td>
                                 <td class="celda-descripcion">{{ $incidencia->descripcion }}</td>
-                                <td>@include('incidencias.partials.estado-badge', ['nombre' => $incidencia->estado->nombre])</td>
+                                <td>@include('incidencias.partials.estado-badge', ['nombre' => $incidencia->estado->nombre, 'compacto' => true])</td>
                                 <td>
                                     @forelse ($incidencia->responsables as $r)
                                         <span class="resp-chip">{{ $r->usuario->apellido_nombres ?? '—' }}</span>
@@ -140,6 +139,8 @@
             @endforeach
         </div>
     @endif
+
+    <p class="text-muted small mt-2">{{ $incidencias->count() }} de {{ $totalIncidencias }} incidencia(s) en total</p>
 
     <div class="modal fade" id="modalResolverIncidencia" tabindex="-1"
          aria-labelledby="modalResolverIncidenciaTitulo" aria-hidden="true">

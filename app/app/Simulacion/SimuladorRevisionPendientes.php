@@ -14,6 +14,9 @@ class SimuladorRevisionPendientes implements Simulacion
 {
     public const DEMORA_REVISION_SEGUNDOS = 10;
 
+    /** De cada 10 revisiones, cuántas confirman el reclamo en vez de cancelarlo. */
+    private const PROBABILIDAD_CONFIRMACION = 70;
+
     public function ejecutar(): int
     {
         $pendientes = Incidencia::query()
@@ -68,7 +71,7 @@ class SimuladorRevisionPendientes implements Simulacion
 
     protected function debeConfirmar(): bool
     {
-        return random_int(0, 1) === 1;
+        return random_int(1, 100) <= self::PROBABILIDAD_CONFIRMACION;
     }
 
     private function pendienteMaduro(Incidencia $incidencia): bool

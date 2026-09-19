@@ -19,16 +19,18 @@ services:
     networks:
       - mvp
 
-  scheduler:
+  queue-worker:
     build:
       context: ./docker/php
     image: mvp-mtd-php
-    container_name: mvp-scheduler
+    container_name: mvp-queue-worker
     restart: unless-stopped
     working_dir: /var/www/html
-    # "El sistema en uso": corre simulacion:ejecutar cada 10s (routes/console.php)
-    # en vez de dispararse desde las pantallas de incidencias.
-    command: php artisan schedule:work
+    # "El sistema en uso": cada incidencia dispara su propia cadena de jobs
+    # con delay (revisión -> asignación -> resolución) al confirmarse el alta
+    # (IncidenciaController::confirmar), no hay sondeo periódico de toda la
+    # tabla. Este worker sólo consume esos jobs cuando existen.
+    command: php artisan queue:work --tries=1
     volumes:
       - ./app:/var/www/html
     depends_on:

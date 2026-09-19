@@ -80,12 +80,14 @@
                         está <strong>En proceso</strong>.
                     </p>
                     <dl class="datos-detalle mb-0">
-                        <dt>Criticidad</dt>
-                        <dd>
-                            <span class="badge crit-badge crit-{{ Str::slug($incidencia->criticidad?->nombre ?? 'Normal') }}">
-                                {{ $incidencia->criticidad?->nombre ?? 'Normal' }}
-                            </span>
-                        </dd>
+                        @unless ($incidencia->estaBorrador())
+                            <dt>Criticidad</dt>
+                            <dd>
+                                <span class="badge crit-badge crit-{{ Str::slug($incidencia->criticidad?->nombre ?? 'Normal') }}">
+                                    {{ $incidencia->criticidad?->nombre ?? 'Normal' }}
+                                </span>
+                            </dd>
+                        @endunless
                         <dt>Responsables</dt>
                         <dd>
                             @forelse ($incidencia->responsables as $r)

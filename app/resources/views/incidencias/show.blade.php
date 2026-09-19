@@ -27,12 +27,14 @@
                     <dt>Tipo</dt><dd>{{ $incidencia->tipo->nombre }}</dd>
                     <dt>Ubicación</dt><dd>{{ $incidencia->ubicacion->nombre }}</dd>
                     <dt>Descripción</dt><dd>{{ $incidencia->descripcion }}</dd>
-                    <dt>Criticidad</dt>
-                    <dd>
-                        <span class="badge crit-badge crit-{{ Str::slug($incidencia->criticidad?->nombre ?? 'Normal') }}">
-                            {{ $incidencia->criticidad?->nombre ?? 'Normal' }}
-                        </span>
-                    </dd>
+                    @unless ($incidencia->estaBorrador())
+                        <dt>Criticidad</dt>
+                        <dd>
+                            <span class="badge crit-badge crit-{{ Str::slug($incidencia->criticidad?->nombre ?? 'Normal') }}">
+                                {{ $incidencia->criticidad?->nombre ?? 'Normal' }}
+                            </span>
+                        </dd>
+                    @endunless
                     <dt>Estado actual</dt>
                     <dd>@include('incidencias.partials.estado-badge', ['nombre' => $incidencia->estado->nombre])</dd>
                     <dt>Registrada por</dt><dd>{{ $incidencia->usuarioAlta->apellido_nombres ?? '—' }}</dd>

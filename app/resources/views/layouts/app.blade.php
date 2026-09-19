@@ -23,41 +23,42 @@
                 <span class="app-navbar__brand">
                     <span class="app-navbar__title">EcoReporte</span>
                     <span class="app-navbar__subtitle">Gestión de Incidencias</span>
-                    @if ($sesionUsuario)
-                        <span class="app-navbar__rol">{{ $sesionUsuario['rol'] }}</span>
-                    @endif
                 </span>
             </a>
 
             @if ($sesionUsuario)
-                <div class="dropdown ms-auto">
-                    <button class="btn app-navbar__menu-toggle dropdown-toggle" type="button"
-                            id="appMenu" data-bs-toggle="dropdown" aria-expanded="false"
-                            aria-label="Abrir menú de usuario">
-                        <i class="bi bi-person-circle" aria-hidden="true"></i>
-                        <span class="d-none d-sm-inline">Menú</span>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end app-navbar__menu" aria-labelledby="appMenu">
-                        <li>
-                            <button type="button" class="dropdown-item" disabled>
-                                <i class="bi bi-person" aria-hidden="true"></i> Mi Perfil
-                            </button>
-                        </li>
-                        <li>
-                            <button type="button" class="dropdown-item" disabled>
-                                <i class="bi bi-gear" aria-hidden="true"></i> Configuraciones
-                            </button>
-                        </li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <form method="POST" action="{{ route('logout') }}">
-                                @csrf
-                                <button type="submit" class="dropdown-item">
-                                    <i class="bi bi-box-arrow-right" aria-hidden="true"></i> Salir
+                <div class="app-navbar__end">
+                    <span class="app-navbar__rol">{{ $sesionUsuario['rol'] }}</span>
+
+                    <div class="dropdown">
+                        <button class="btn app-navbar__menu-toggle dropdown-toggle" type="button"
+                                id="appMenu" data-bs-toggle="dropdown" aria-expanded="false"
+                                aria-label="Abrir menú de usuario">
+                            <i class="bi bi-person-circle" aria-hidden="true"></i>
+                            <span class="d-none d-sm-inline">Menú</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end app-navbar__menu" aria-labelledby="appMenu">
+                            <li>
+                                <button type="button" class="dropdown-item" disabled>
+                                    <i class="bi bi-person" aria-hidden="true"></i> Mi Perfil
                                 </button>
-                            </form>
-                        </li>
-                    </ul>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item" disabled>
+                                    <i class="bi bi-gear" aria-hidden="true"></i> Configuraciones
+                                </button>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form method="POST" action="{{ route('logout') }}">
+                                    @csrf
+                                    <button type="submit" class="dropdown-item">
+                                        <i class="bi bi-box-arrow-right" aria-hidden="true"></i> Salir
+                                    </button>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             @endif
         </div>

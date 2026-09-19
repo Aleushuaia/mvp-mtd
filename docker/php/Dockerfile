@@ -24,17 +24,22 @@ RUN apk add --no-cache \
 
 # OPcache: viene compilado de forma estática en la imagen base (ya no puede
 # instalarse como extensión compartida vía docker-php-ext-install), sólo
-# hace falta configurarlo. Sin él, cada request relee y recompila todos los
-# .php a través del bind mount (en Docker Desktop sobre Windows eso suma
-# segundos por request). validate_timestamps queda activo para que los
-# cambios locales se vean sin reiniciar el contenedor.
+# hace falta configurarlo. Con validate_timestamps=1 cada request hace un
+# stat() por cada archivo .php incluido (framework + vendor + app) a través
+# del bind mount de Docker Desktop sobre Windows. Medido en este entorno:
+# 3-11s por request. revalidate_freq no alcanza a mitigarlo porque cada
+# request ya dura más que la ventana de throttling, así que nunca "enfría".
+# validate_timestamps=0 lo elimina por completo (medido: 0.4-0.7s por
+# request). Mismo criterio que config/view.php (check_cache_timestamps):
+# se compila una vez y sólo se refresca reiniciando el contenedor
+# (`docker compose restart app`) o corriendo `php artisan optimize:clear`
+# + reinicio después de cambiar código PHP.
 RUN { \
         echo 'opcache.enable=1'; \
         echo 'opcache.memory_consumption=256'; \
         echo 'opcache.interned_strings_buffer=16'; \
         echo 'opcache.max_accelerated_files=20000'; \
-        echo 'opcache.validate_timestamps=1'; \
-        echo 'opcache.revalidate_freq=0'; \
+        echo 'opcache.validate_timestamps=0'; \
     } > /usr/local/etc/php/conf.d/opcache.ini
 
 # Composer

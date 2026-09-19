@@ -34,7 +34,7 @@
                 <input type="text" class="form-control @error('nombre_usuario') is-invalid @enderror"
                        id="nombre_usuario" name="nombre_usuario" value="{{ old('nombre_usuario') }}"
                        autocomplete="username" autocapitalize="none" spellcheck="false"
-                       placeholder="nombre.apellido@mvp.mail" required autofocus>
+                       placeholder="Ingrese aquí su nombre de usuario" required autofocus>
             </div>
 
             <p class="text-muted mb-3">

@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\EvaluarRevisionIncidencia;
 use App\Models\EstadoIncidencia;
 use App\Models\HistorialEstadoIncidencia;
 use App\Models\Incidencia;
 use App\Models\TipoIncidencia;
 use App\Models\Ubicacion;
 use App\Models\Usuario;
+use App\Simulacion\SimuladorRevisionPendientes;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -237,6 +239,12 @@ class IncidenciaController extends Controller
             Incidencia::ESTADO_PENDIENTE,
             'El socio confirmó el envío de la incidencia.',
         );
+
+        // Dispara la cadena de simulación sólo para esta incidencia (en vez
+        // de sondear toda la tabla): revisión -> asignación -> resolución,
+        // cada eslabón encadenado desde el anterior con su propio delay.
+        EvaluarRevisionIncidencia::dispatch($incidencia)
+            ->delay(now()->addSeconds(SimuladorRevisionPendientes::DEMORA_REVISION_SEGUNDOS));
 
         return redirect()->route('incidencias.index')
             ->with('ok', 'Incidencia N.º '.$incidencia->id_incidencia.' enviada para revisión.');

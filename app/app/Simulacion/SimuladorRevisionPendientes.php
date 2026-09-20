@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
  */
 class SimuladorRevisionPendientes implements Simulacion
 {
-    public const DEMORA_REVISION_SEGUNDOS = 10;
+    public const DEMORA_REVISION_SEGUNDOS = 6;
 
     /** De cada 10 revisiones, cuántas confirman el reclamo en vez de cancelarlo. */
     private const PROBABILIDAD_CONFIRMACION = 70;

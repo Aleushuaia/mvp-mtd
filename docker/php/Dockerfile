@@ -1,8 +1,12 @@
 FROM php:8.5-fpm-alpine
 
-# CA raíz corporativa (inspección TLS local): necesaria para que curl/composer
-# puedan verificar certificados dentro del contenedor.
-COPY kaspersky-ca.crt /usr/local/share/ca-certificates/kaspersky-ca.crt
+# CA extra para buildear detrás de un proxy con inspección TLS (p. ej. red
+# corporativa): docker/php/certs/ está vacía en el repo (gitignored salvo
+# .gitkeep). Si tu red necesita confiar en un CA propio para que
+# curl/composer bajen paquetes, poné el .crt ahí antes de buildear. En un
+# clon nuevo (VPS) la carpeta llega vacía y no se hornea ningún CA de
+# terceros en la imagen.
+COPY certs/ /usr/local/share/ca-certificates/
 RUN apk add --no-cache ca-certificates && update-ca-certificates
 
 # Dependencias del sistema necesarias para compilar extensiones y para Laravel

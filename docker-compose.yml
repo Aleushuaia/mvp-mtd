@@ -62,7 +62,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "${POSTGRES_PORT}:5432"
+      # Solo loopback: accesible desde un cliente gráfico en el host, pero
+      # nunca desde la red pública (ni siquiera hace falta ufw para esto).
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
     volumes:
       - ./volumes/postgres:/var/lib/postgresql
     healthcheck:

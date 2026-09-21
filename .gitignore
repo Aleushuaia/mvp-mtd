@@ -5,6 +5,10 @@
 /app/vendor/
 /app/node_modules/
 
+# Entorno de infraestructura (docker-compose)
+/.env
+/.env.backup
+
 # Entorno Laravel
 /app/.env
 /app/.env.backup
@@ -29,6 +33,18 @@
 /app/public/hot
 /app/public/storage
 /app/public/build/
+
+# CA corporativo local (proxy con inspección TLS): solo hace falta para
+# buildear detrás de esa red. No debe hornearse en la imagen del VPS.
+/docker/php/certs/*
+!/docker/php/certs/.gitkeep
+
+# Basura de debugging (curl, etc.)
+cookies.txt
+
+# Documentación pesada: se guarda local, no viaja en el repo/clon del VPS
+/manual_mvp.docx
+/capturas.rar
 
 # IDE / SO
 .idea/

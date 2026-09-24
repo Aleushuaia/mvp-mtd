@@ -298,7 +298,7 @@ class IncidenciaController extends Controller
             'id_tipo_incidencia' => ['required', 'integer', 'exists:tipos_incidencia,id'],
             'id_ubicacion' => ['required', 'integer', 'exists:ubicaciones,id'],
             'descripcion' => ['required', 'string', 'max:140'],
-            'fecha_hora_evento' => ['required', 'date', 'before_or_equal:now'],
+            'fecha_hora_evento' => ['required', 'date', 'before_or_equal:now', 'after_or_equal:'.now()->subDay()],
         ], [
             'id_tipo_incidencia.required' => 'Seleccione el tipo de incidencia.',
             'id_ubicacion.required' => 'Seleccione la ubicación.',
@@ -306,6 +306,7 @@ class IncidenciaController extends Controller
             'descripcion.max' => 'La descripción admite hasta 140 caracteres.',
             'fecha_hora_evento.required' => 'Indique la fecha y hora en que ocurrió el hecho.',
             'fecha_hora_evento.before_or_equal' => 'La fecha y hora del hecho no puede ser futura.',
+            'fecha_hora_evento.after_or_equal' => 'La fecha y hora del hecho no puede ser de más de 1 día atrás.',
         ]);
     }
 

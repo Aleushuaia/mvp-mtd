@@ -92,6 +92,22 @@
     if (areaDescripcion) areaDescripcion.addEventListener('input', sincronizarContador);
     sincronizarContador();
 
+    // -------------------- Aviso: ubicación "Otros" --------------------
+    var selectUbicacion = form.elements['id_ubicacion'];
+    var avisoUbicacionOtros = document.getElementById('avisoUbicacionOtros');
+    function sincronizarAvisoUbicacionOtros() {
+        if (!selectUbicacion || !avisoUbicacionOtros) return;
+        var opt = selectUbicacion.options[selectUbicacion.selectedIndex];
+        var esOtros = !!opt && opt.textContent.trim().toLowerCase() === 'otros';
+        // No usar la propiedad "hidden": la clase Bootstrap "form-text" define
+        // display:block en la hoja de estilos del autor, que tiene prioridad
+        // sobre la regla [hidden]{display:none} del navegador aunque empate
+        // en especificidad, así que el atributo hidden queda sin efecto.
+        avisoUbicacionOtros.style.display = esOtros ? 'block' : 'none';
+    }
+    if (selectUbicacion) selectUbicacion.addEventListener('change', sincronizarAvisoUbicacionOtros);
+    sincronizarAvisoUbicacionOtros();
+
     // -------------------- Tiempo relativo en español --------------------
     function textoHace(iso) {
         var t = new Date(iso).getTime();

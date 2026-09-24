@@ -54,6 +54,9 @@
                         <option value="{{ $ubicacion->id }}" @selected(old('id_ubicacion', $incidencia->id_ubicacion ?? null) == $ubicacion->id)>{{ $ubicacion->nombre }}</option>
                     @endforeach
                 </select>
+                <div id="avisoUbicacionOtros" class="aviso-ubicacion-otros" role="note" style="display: none;">
+                    Por favor, precise el lugar exacto dentro de la descripción (ej.: "junto al estacionamiento").
+                </div>
             </div>
 
             <div class="mb-3">
@@ -62,8 +65,9 @@
                        class="form-control @error('fecha_hora_evento') is-invalid @enderror"
                        id="fecha_hora_evento" name="fecha_hora_evento"
                        value="{{ old('fecha_hora_evento', isset($incidencia) ? $incidencia->fecha_hora_evento->format('Y-m-d\TH:i') : now()->format('Y-m-d\TH:i')) }}"
+                       min="{{ now()->subDay()->format('Y-m-d\TH:i') }}"
                        max="{{ now()->format('Y-m-d\TH:i') }}" required>
-                <div class="form-text">Cuándo ocurrió el problema (no puede ser una fecha futura).</div>
+                <div class="form-text">Cuándo ocurrió el problema (no puede ser una fecha futura ni de más de 1 día atrás).</div>
             </div>
 
             <div class="mb-2">
@@ -72,6 +76,12 @@
                           id="descripcion" name="descripcion" rows="3" maxlength="140"
                           placeholder="Describa brevemente el problema observado" required>{{ old('descripcion', $incidencia->descripcion ?? null) }}</textarea>
                 <div class="form-text text-end"><span id="contadorDescripcion">0</span>/140</div>
+            </div>
+
+            <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="notificar_resolucion" name="notificar_resolucion" value="1"
+                       @checked(old('notificar_resolucion'))>
+                <label class="form-check-label" for="notificar_resolucion">Quiero que me notifiquen cuando mi incidencia esté Resuelta</label>
             </div>
 
             <div class="form-actions">

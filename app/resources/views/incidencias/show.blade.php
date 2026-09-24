@@ -28,7 +28,14 @@
                     <dt>Ubicación</dt><dd>{{ $incidencia->ubicacion->nombre }}</dd>
                     <dt>Descripción</dt><dd>{{ $incidencia->descripcion }}</dd>
                     @unless ($incidencia->estaBorrador())
-                        <dt>Criticidad</dt>
+                        <dt>
+                            Criticidad
+                            <button type="button" class="btn-info-inline" data-tooltip title="Ver información de los niveles de criticidad"
+                                    aria-label="Ver información de los niveles de criticidad"
+                                    data-bs-toggle="modal" data-bs-target="#modalCriticidadInfo">
+                                <i class="bi bi-info-circle" aria-hidden="true"></i>
+                            </button>
+                        </dt>
                         <dd>
                             <span class="badge crit-badge crit-{{ Str::slug($incidencia->criticidad?->nombre ?? 'Normal') }}">
                                 {{ $incidencia->criticidad?->nombre ?? 'Normal' }}
@@ -100,4 +107,6 @@
             </div>
         </div>
     </div>
+
+    @include('incidencias.partials.criticidad-info-modal')
 @endsection

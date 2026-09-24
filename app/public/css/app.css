@@ -43,6 +43,17 @@ small,
     font-size: 1rem !important;
 }
 
+/* ---------- Aviso: ubicación "Otros" (incidencias) ---------- */
+.aviso-ubicacion-otros {
+    margin-top: .25rem;
+    padding: .5rem .75rem;
+    border-radius: 8px;
+    background-color: #e8823c;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 500;
+}
+
 /* ---------- Layout general (app-body) ---------- */
 .app-body {
     display: flex;
@@ -577,6 +588,47 @@ small,
 }
 
 .btn-icono .bi { display: block; }
+
+/* ---------- Ícono "+info" inline (junto a etiquetas/badges) ---------- */
+.btn-info-inline {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    margin-left: .35rem;
+    border: none;
+    background: transparent;
+    color: var(--tr-green-700);
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    vertical-align: -4px;
+}
+
+.btn-info-inline:hover,
+.btn-info-inline:focus-visible {
+    color: var(--tr-green-900);
+    outline: none;
+}
+
+/* ---------- Modal informativo de niveles de criticidad ---------- */
+.criticidad-info-lista {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.criticidad-info-lista li:not(:last-child) {
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--tr-border);
+}
+
+.criticidad-info-lista .crit-badge { margin-bottom: .4rem; }
 
 /* ---------- Tarjetas de incidencia (móvil / tablet) ---------- */
 .incidencia-cards { display: flex; flex-direction: column; gap: 1rem; }

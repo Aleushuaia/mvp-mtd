@@ -1,0 +1,323 @@
+RESUMEN TÉCNICO - EcoReporte (MVP Gestión de Incidencias)
+Actualizado: 2026-09-21
+
+
+1. QUÉ ES
+
+Aplicación web para que los socios de un club reporten incidencias
+(problemas edilicios/de servicio: humo, plagas, malos olores, desagües,
+daño de alambre perimetral, etc.), y para que el personal del club
+(operadores) las gestione: asigne responsables, cambie criticidad, y las
+resuelva o cancele. El MVP simula automáticamente el circuito de revisión,
+asignación y resolución que en producción haría un operador humano, para
+poder demostrar el flujo completo sin intervención manual.
+
+Nombre visible en el front: "EcoReporte · Gestión de Incidencias".
+Nombre de dominio/proyecto interno: "EcoVoz Urbana" (aparece en comentarios
+de migraciones/seeders).
+
+
+2. STACK TECNOLÓGICO
+
+- Backend: PHP 8.5 (requiere ^8.3) + Laravel ^13.17 (Blade, sin API REST
+  separada; todo server-rendered).
+- Base de datos: PostgreSQL 18 (alpine).
+- Frontend: Blade + Bootstrap 5.3.3 (CDN) + Bootstrap Icons (CDN) + JS
+  vanilla propio (sin framework JS, sin build pipeline real). Hay
+  `vite.config.js`/`package.json` en el repo (skeleton por defecto de
+  Laravel) pero NO se usan: los assets (`public/css/app.css`,
+  `public/js/*.js`) son archivos estáticos servidos directos por nginx,
+  con cache-busting manual vía `?v={{ filemtime(...) }}` en los `<link>`/
+  `<script>` de las vistas.
+- Colas: driver `database` (tabla `jobs`/`failed_jobs`), consumidas por un
+  contenedor dedicado (`queue-worker`) corriendo `php artisan queue:work
+  --tries=1`.
+- Testing: PHPUnit 12 (vía `php artisan test`).
+- Contenerización: Docker Compose (4 servicios, ver sección 3).
+
+
+3. INFRAESTRUCTURA (docker-compose.yml)
+
+- mvp-app: PHP-FPM 8.5 alpine (build propio, docker/php/Dockerfile).
+  Extensiones: pdo, pdo_pgsql, pgsql, mbstring, bcmath, zip, intl. OPcache
+  habilitado (256 MB, `validate_timestamps=0` → los cambios de código PHP
+  requieren `docker compose restart app` o `optimize:clear` para verse;
+  ese ajuste existe por lo lento del bind-mount de Docker Desktop en
+  Windows, no hace falta en un host Linux). Corre `php-fpm`, escucha
+  :9000 (FastCGI), sin puerto publicado al host.
+- mvp-queue-worker: misma imagen que `mvp-app`, corre
+  `php artisan queue:work --tries=1`. Consume los jobs de simulación
+  encolados (ver sección 6).
+- mvp-nginx: `nginx:alpine`. Sirve `app/public` y reenvía `*.php` a
+  `mvp-app:9000`. Único servicio con puerto publicado al host
+  (`${APP_PORT}:80`, por defecto 8080). Importante: si se recrea el
+  contenedor `app` (nueva imagen, restart con --build, etc.) hay que
+  reiniciar también `nginx`, porque cachea la resolución de IP del
+  upstream y puede quedar apuntando a un contenedor viejo (502).
+- mvp-postgres: `postgres:18-alpine`. Datos persistidos en bind mount
+  `./volumes/postgres` (sobreviven a `docker compose down`; NUNCA usar
+  `docker compose down -v`, borra el volumen). Puerto publicado solo en
+  loopback (`127.0.0.1:${POSTGRES_PORT}:5432`): accesible desde un
+  cliente gráfico en el host, no desde la red externa.
+
+Dos archivos `.env` distintos, con propósitos distintos:
+- `.env` (raíz): lo lee `docker-compose` para resolver `${...}` en el
+  propio compose (APP_PORT, POSTGRES_DB/USER/PASSWORD/PORT). No lo lee
+  Laravel.
+- `app/.env`: lo lee Laravel en tiempo de ejecución (APP_KEY, DB_*,
+  SESSION_*, QUEUE_CONNECTION=database, CACHE_STORE=database, etc.).
+Ninguno de los dos se versiona en git (ambos gitignored); cada entorno
+arma el suyo a partir de `.env.example` / `app/.env.example`.
+
+CA corporativo: `docker/php/certs/` (gitignored salvo `.gitkeep`) es donde
+se coloca localmente un `.crt` propio si hace falta confiar en un proxy
+con inspección TLS para poder buildear (`composer install` dentro de la
+imagen). En un clon nuevo la carpeta llega vacía y no se hornea ningún CA
+de terceros en la imagen.
+
+
+4. MODELO DE DATOS (migraciones principales)
+
+Catálogos: `roles`, `tipos_incidencia`, `ubicaciones`,
+`criticidades_incidencia`, `estados_incidencia` (PK propia `id_estado`).
+
+Núcleo:
+- `usuarios` (id, id_socio nullable [referencia externa, sin FK local],
+  id_rol FK roles, nombre_usuario único, contrasena [hash bcrypt, ver
+  sección 5], fecha_creacion, fecha_ultimo_acceso).
+- `operadores` (id_operador, id_usuario FK, disponible bool).
+- `responsables` (id, id_usuario FK, disponible bool).
+- `incidencias` (id_incidencia, id_usuario_alta, id_usuario, id_tipo_
+  incidencia, id_ubicacion, id_estado_incidencia, id_criticidad nullable,
+  descripcion [max 140], fecha_hora_evento, fecha_hora_alta,
+  resolucion_simulada_evaluada_at [migración posterior, marca que ya se
+  evaluó una vez si se resuelve, para no volver a sortear]). Índices en
+  estado, tipo, fecha_hora_evento, fecha_hora_alta.
+- `incidencias_responsables`: pivot N:M (PK compuesta id_incidencia +
+  id_responsable) con fecha_asignacion.
+- `historial_estado_incidencia`: auditoría de cada cambio (estado
+  anterior/nuevo, usuario, fecha_hora, comentario). Es la fuente de
+  verdad para el modal "Ver historial" de cada incidencia.
+
+Todas las FK son RESTRICT (no se puede borrar un catálogo en uso) salvo
+`id_criticidad` (SET NULL) y las de cascada explícitas (usuarios ->
+operadores/responsables, incidencia -> pivot/historial).
+
+Además: tablas estándar de Laravel — `sessions`, `cache`, `jobs`,
+`failed_jobs` (las dos últimas se agregaron cuando se migró de scheduler
+a colas, ver sección 6).
+
+
+5. ROLES Y AUTENTICACIÓN
+
+Roles (constantes en `App\Models\Usuario`): Administrador (1), Operador
+(2), Responsable (3), Socio (4). El rol Administrador está definido pero
+sin panel propio implementado en este MVP.
+
+Login (`AuthController`): pide SOLO nombre de usuario, sin contraseña —
+la columna `contrasena` existe y guarda un hash bcrypt real (todas las
+cuentas seed comparten "123456"), pero el controlador no la valida en
+absoluto; si el `nombre_usuario` existe, la sesión se inicia. Requiere
+además aceptar términos y condiciones (checkbox con estado persistido en
+localStorage del navegador, campo oculto `acepta`). Tras loguear,
+`AuthController::destino()` bifurca por rol: Socio -> `panel.socio`,
+Operador -> `operador.incidencias.index`, resto -> `panel.general`
+(genérico, sin funcionalidad específica de Responsable/Administrador
+todavía). Sesión en `session(['usuario' => [...]])` (array plano, no un
+Eloquent Authenticatable de Laravel Auth estándar); el middleware
+`usuario.auth` (`App\Http\Middleware\EnsureUsuarioAutenticado`) protege
+las rutas de panel/incidencias.
+
+Seed de usuarios (`UsuarioSeeder`): 40 cuentas fijas — socio1..socio20
+(20), operador1..operador10 (10), responsable1..responsable10 (10).
+Nombre y apellido en pantalla son aleatorios (Faker es_AR, alternando
+género). Es un dato a tener en cuenta si la instancia queda accesible
+por IP pública: usuarios y "contraseña" (aunque no se valide) son
+predecibles.
+
+
+6. CICLO DE VIDA DE UNA INCIDENCIA Y SIMULACIÓN AUTOMÁTICA
+
+Estados (`App\Models\Incidencia`, constantes ESTADO_*): Borrador (1) ->
+Pendiente (2) -> {Confirmada (3) | Cancelada (6)} -> En proceso (4) ->
+{Resuelta (5) | En proceso (permanece)}. Resuelta y Cancelada son finales.
+
+Transiciones manuales:
+- Borrador -> Pendiente: el socio arma el alta (`IncidenciaController::
+  store`, 3 campos: tipo, ubicación, descripción [140 car.] + fecha/hora
+  del hecho, que no puede ser futura), queda en Borrador, ve una pantalla
+  de confirmación obligatoria (`confirmar-alta`) y recién ahí, al aceptar
+  (`confirmar`), pasa a Pendiente. Mientras está en Borrador, el socio
+  puede editar (`edit`/`update`).
+- En proceso -> Cancelada: socio (desde "Mis incidencias") u operador
+  (desde su panel), con motivo obligatorio (máx. 200 caracteres).
+- En proceso -> Resuelta: solo operador, con mensaje opcional (máx. 200).
+- En proceso -> En proceso: operador cambia criticidad y/o responsables
+  asignados sin cambiar el estado (también queda en el historial).
+
+Transiciones automáticas (simulan a "un operador cualquiera"; antes se
+sondeaba toda la tabla vía scheduler cada 10s, ahora cada incidencia
+dispara su propia cadena de Jobs encolados con delay, consumidos por
+`queue-worker`):
+
+  IncidenciaController::confirmar()
+    -> despacha EvaluarRevisionIncidencia con delay 10s
+       (SimuladorRevisionPendientes::DEMORA_REVISION_SEGUNDOS)
+
+  EvaluarRevisionIncidencia (handle)
+    -> SimuladorRevisionPendientes::revisar(): 70% confirma (Pendiente ->
+       Confirmada), 30% cancela (Pendiente -> Cancelada). Si confirmó,
+       despacha EvaluarAsignacionIncidencia con delay 10s más
+       (SimuladorAsignaciones::DEMORA_ASIGNACION_SEGUNDOS).
+
+  EvaluarAsignacionIncidencia (handle)
+    -> SimuladorAsignaciones::asignar(): elige un operador y un
+       responsable disponibles al azar; la criticidad se sortea entre los
+       niveles MENOS usados por ese socio (para repartir parejo). Pasa a
+       En proceso. Si quedó En proceso, despacha
+       EvaluarResolucionIncidencia con delay 10s más
+       (SimuladorResoluciones::DEMORA_RESOLUCION_SEGUNDOS).
+
+  EvaluarResolucionIncidencia (handle, último eslabón)
+    -> SimuladorResoluciones::resolver(): decide UNA sola vez (marca
+       `resolucion_simulada_evaluada_at` para no volver a sortear aunque
+       siga En proceso) si resuelve. La probabilidad no es 50/50 fijo:
+       se inclina hacia el estado (Resuelta/En proceso) con MENOS
+       incidencias en toda la base, para emparejar cantidades. Si
+       resuelve, agrega un comentario ficticio elegido al azar de una
+       lista fija.
+
+Cada eslabón queda registrado en `historial_estado_incidencia` con el
+operador "autor" (elegido al azar entre los disponibles) y un comentario
+descriptivo. El archivo MAPA_ESTADOS_INCIDENCIAS.txt (raíz del repo)
+documenta el circuito con más diagramas, aunque quedó desactualizado en
+dos detalles: la revisión inicial es 70/30 (no 50/50 parejo) y la
+resolución ya no depende de "navegar por una pantalla" sino que corre
+sola vía colas mientras `queue-worker` esté levantado.
+
+
+7. FRONTEND: BORRADOR OFFLINE Y AVISOS DE CONECTIVIDAD
+
+Dos scripts JS vanilla en `public/js/`, sin dependencias externas más
+allá de Bootstrap (ya cargado por el layout):
+
+- `conectividad.js`: intercepta el submit de cualquier `<form method="
+  POST">` (salvo los marcados `data-conectividad-skip`) y los links con
+  `data-conectividad`. Antes de dejar pasar la acción, chequea
+  `navigator.onLine`; si está offline, muestra un banner fijo arriba de
+  la pantalla con "Reintentar" / "Solicitar ayuda" (mensaje pensado para
+  guiar al usuario a la recepción del club). No hace ping al backend, así
+  que no agrega latencia cuando sí hay conexión.
+
+- `borrador-incidencia.js`: gobierna el formulario de "Nueva incidencia"
+  (`data-conectividad-skip`, tiene su propio manejo). Autoguarda en
+  `localStorage` (clave `borrador_incidencia_v1`, o una por incidencia
+  al editar) en cada `change` de campo y al ocultarse la página
+  (`pagehide`/`visibilitychange`). El envío real es por `fetch` +
+  `AbortController` (no un submit nativo): si falla por red/offline,
+  muestra un banner embebido en la propia pantalla ("Reintentar"/
+  "Solicitar ayuda") y el borrador queda intacto. Recién se borra el
+  borrador cuando el backend confirma 200 OK. Al volver a entrar a
+  "Nueva incidencia" con un borrador pendiente, ofrece un modal
+  Bootstrap ("Continuar borrador" / "Empezar en blanco"); si Bootstrap
+  no cargó, cae a un `confirm()` nativo como fallback.
+
+Este flujo fue verificado end-to-end en Chrome headless (protocolo CDP)
+simulando offline real vía DevTools: banner al fallar el guardado,
+persistencia en localStorage, y modal de recuperación al volver online.
+Aclaración práctica: el modo "Offline" de DevTools solo aplica mientras
+el panel de DevTools sigue abierto; si se cierra, la conexión real
+vuelve sola.
+
+
+8. RUTAS PRINCIPALES (routes/web.php)
+
+Públicas: `GET /` (redirige a login), `GET|POST /login`, `POST /logout`.
+
+Protegidas por middleware `usuario.auth`:
+- `GET /ingresar` — bifurca según rol tras loguear.
+- `GET /panel-socio`, `GET /panel` (genérico).
+- Socio: `GET|POST /incidencias`, `GET /incidencias/nueva`,
+  `GET /incidencias/{id}/editar` + `PATCH`, `GET /incidencias/{id}/
+  confirmar-alta`, `GET /incidencias/{id}`, `GET /incidencias/{id}/
+  historial` (JSON, para el modal), `POST /incidencias/{id}/confirmar`,
+  `POST /incidencias/{id}/cancelar`.
+- Operador: `GET /operador/incidencias`, `GET /operador/incidencias/{id}`
+  + `PATCH` (criticidad/responsables), `POST .../cancelar`,
+  `POST .../resolver`.
+
+`store`/`update` de incidencias responden JSON (`{ok, id_incidencia,
+redirect}`) cuando la request pide `Accept: application/json` —es lo que
+consume `borrador-incidencia.js` vía fetch— o un redirect HTTP normal
+para submits sin JS.
+
+
+9. TESTING
+
+PHPUnit, tests de feature bajo `app/tests/Feature/`:
+- FiltrosIncidenciasTest, IncidenciaEdicionTest, OperadorIncidenciasTest,
+  PanelSocioTest: circuito CRUD y permisos por rol.
+- SimulacionIncidenciasTest / SimulacionJobsTest: cubren el
+  comportamiento de los simuladores y la cadena de Jobs encolados.
+Correr con `docker compose exec app php artisan test` (o `vendor/bin/
+phpunit`, acepta filtro por archivo/`--filter`).
+
+
+10. DATOS DE PRUEBA (seeders)
+
+Orden relevante (`DatabaseSeeder`): RoleSeeder -> UsuarioSeeder (40
+cuentas) -> OperadorSeeder/ResponsableSeeder (convierten algunos usuarios
+en filas de `operadores`/`responsables`) -> catálogos (TipoIncidencia,
+Ubicacion, CriticidadIncidencia, EstadoIncidencia).
+Repoblar solo usuarios sin tocar catálogos:
+`php artisan db:seed --class=UsuarioSeeder` (+ Operador/Responsable).
+Reset total: `php artisan migrate:fresh --seed` (borra TODO, usar con
+cuidado).
+
+
+11. ESTADO DEL REPOSITORIO / LIMPIEZA REALIZADA (sept. 2026)
+
+Antes de clonar en un VPS (DonWeb, Ubuntu 24.04 + imagen "Docker on
+Ubuntu 24.04" del marketplace) se hizo una limpieza de seguridad e
+higiene sobre el repo, ya commiteada y pusheada a `origin/main`:
+- `.env` de raíz (tenía credenciales reales de Postgres) sacado de git,
+  password rotada, agregado `.env.example` como plantilla.
+- `cookies.txt` (sesión real de prueba) eliminado.
+- CA corporativo reubicado a `docker/php/certs/` (gitignored) para que
+  el build local siga funcionando sin hornear ese CA en la imagen del
+  VPS.
+- `app/tmp/` (scaffold de Laravel duplicado, 58 archivos sueltos de un
+  `laravel new` inicial) eliminado por completo.
+- Dumps de debugging (`incidencias_page.html`, `login_page.html`,
+  `test-out.txt`, `timings.txt`) eliminados.
+- `manual_mvp.docx` y `capturas.rar` desvinculados de git (siguen en
+  disco local, no viajan al clon del servidor).
+- Postgres: puerto publicado solo en loopback (127.0.0.1), no en toda
+  la red.
+
+Pendiente, no bloqueante para levantar la demo:
+- Revertir `opcache.validate_timestamps` / `check_cache_timestamps` a
+  `1`/`true` para el VPS (en Windows están en `0`/`false` por el
+  bind-mount lento de Docker Desktop; en Linux no hace falta y sin
+  revertir, cada deploy requiere reiniciar el contenedor a mano).
+- HTTPS: nginx solo escucha :80, sin `server_name` real ni certificado.
+- Contraseña única "123456" en las 40 cuentas seed + login sin validar
+  contraseña: aceptable para una demo controlada, no para exponer con
+  datos reales sin restringir el acceso.
+- `capturas/` (carpeta con 8 jpg sueltos) duplica el contenido de
+  `capturas.rar` — sin resolver todavía, pendiente de decisión.
+- `trebol.png` en la raíz duplica `app/public/img/trebol.png`.
+- No hay runbook de deploy documentado más allá de `instructivo.txt`
+  (pensado para desarrollo local en Windows, no para VPS).
+
+
+12. LIMITACIONES CONOCIDAS DEL MVP (por diseño, no bugs)
+
+- No hay validación de contraseña real en el login.
+- Rol Administrador definido en el modelo pero sin panel propio.
+- La simulación automática depende de que `queue-worker` esté corriendo;
+  si se detiene, las incidencias quedan "congeladas" en el estado en que
+  estén (Pendiente/Confirmada/En proceso) hasta que vuelva a levantarse
+  y drene la cola.
+- `id_socio` en `usuarios` es una referencia externa sin FK local (pensada
+  para integrarse con una API de socios real que no existe en este MVP).

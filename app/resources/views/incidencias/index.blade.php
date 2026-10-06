@@ -18,17 +18,21 @@
         <div class="alert alert-danger" role="alert">{{ session('error') }}</div>
     @endif
 
-    @include('incidencias.partials.filtros', ['action' => route('incidencias.index'), 'estados' => $estados, 'todosPorDefecto' => true])
+    @include('incidencias.partials.filtros', ['action' => route('incidencias.index'), 'estados' => $estados, 'todosPorDefecto' => false])
 
     @php($hayFiltros = request()->hasAny(['numero', 'descripcion', 'estado']))
 
     @if ($incidencias->isEmpty())
         <div class="panel text-center py-5">
             <div class="empty-icon" aria-hidden="true">&#128203;</div>
-            @if ($hayFiltros)
+            {{-- La vista inicial sólo trae las "En proceso": con incidencias
+                 en otros estados no corresponde decir que no hay ninguna. --}}
+            @if ($hayFiltros || $totalIncidencias > 0)
                 <h2 class="h6 mb-1">Sin resultados</h2>
                 <p class="text-muted mb-3">Ninguna de sus incidencias coincide con los filtros aplicados.</p>
-                <a href="{{ route('incidencias.index') }}" class="btn btn-outline-trebol">Limpiar campos</a>
+                @if ($hayFiltros)
+                    <a href="{{ route('incidencias.index') }}" class="btn btn-outline-trebol">Limpiar campos</a>
+                @endif
             @else
                 <h2 class="h6 mb-1">Todavía no tiene incidencias registradas</h2>
                 <p class="text-muted mb-3">Cuando registre un reclamo, aparecerá en esta lista.</p>

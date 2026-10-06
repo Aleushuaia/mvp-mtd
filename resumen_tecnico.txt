@@ -165,8 +165,10 @@ dispara su propia cadena de Jobs encolados con delay, consumidos por
        (SimuladorRevisionPendientes::DEMORA_REVISION_SEGUNDOS)
 
   EvaluarRevisionIncidencia (handle)
-    -> SimuladorRevisionPendientes::revisar(): 70% confirma (Pendiente ->
-       Confirmada), 30% cancela (Pendiente -> Cancelada). Si confirmó,
+    -> SimuladorRevisionPendientes::revisar(): ~90% confirma (Pendiente ->
+       Confirmada), ~10% cancela (Pendiente -> Cancelada), y además nunca
+       cancela si las Canceladas de toda la base pasarían del 10% del
+       total de incidencias (tope duro). Si confirmó,
        despacha EvaluarAsignacionIncidencia con delay 10s más
        (SimuladorAsignaciones::DEMORA_ASIGNACION_SEGUNDOS).
 
@@ -191,7 +193,7 @@ Cada eslabón queda registrado en `historial_estado_incidencia` con el
 operador "autor" (elegido al azar entre los disponibles) y un comentario
 descriptivo. El archivo MAPA_ESTADOS_INCIDENCIAS.txt (raíz del repo)
 documenta el circuito con más diagramas, aunque quedó desactualizado en
-dos detalles: la revisión inicial es 70/30 (no 50/50 parejo) y la
+dos detalles: la revisión inicial es ~90/10 con tope de canceladas del 10% (no 50/50 parejo) y la
 resolución ya no depende de "navegar por una pantalla" sino que corre
 sola vía colas mientras `queue-worker` esté levantado.
 

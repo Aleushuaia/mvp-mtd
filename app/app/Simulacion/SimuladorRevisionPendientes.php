@@ -14,8 +14,11 @@ class SimuladorRevisionPendientes implements Simulacion
 {
     public const DEMORA_REVISION_SEGUNDOS = 6;
 
-    /** De cada 10 revisiones, cuántas confirman el reclamo en vez de cancelarlo. */
-    private const PROBABILIDAD_CONFIRMACION = 70;
+    /** De cada 100 revisiones, cuántas cancelan el reclamo en vez de confirmarlo. */
+    private const PROBABILIDAD_CANCELACION = 10;
+
+    /** Tope de incidencias Canceladas, en % del total de incidencias de la base. */
+    private const TOPE_CANCELADAS_PORCENTAJE = 10;
 
     public function ejecutar(): int
     {
@@ -69,9 +72,27 @@ class SimuladorRevisionPendientes implements Simulacion
         });
     }
 
+    /**
+     * Casi todas las revisiones confirman: sólo se cancela con una
+     * probabilidad baja y, además, nunca si esa cancelación llevaría a las
+     * Canceladas por encima del tope sobre el total de incidencias.
+     */
     protected function debeConfirmar(): bool
     {
-        return random_int(1, 100) <= self::PROBABILIDAD_CONFIRMACION;
+        if (! $this->admiteUnaCancelacionMas()) {
+            return true;
+        }
+
+        return random_int(1, 100) > self::PROBABILIDAD_CANCELACION;
+    }
+
+    /** Cuenta toda la base (también las canceladas a mano por socios u operadores). */
+    private function admiteUnaCancelacionMas(): bool
+    {
+        $total = Incidencia::count();
+        $canceladas = Incidencia::where('id_estado_incidencia', Incidencia::ESTADO_CANCELADA)->count();
+
+        return ($canceladas + 1) * 100 <= $total * self::TOPE_CANCELADAS_PORCENTAJE;
     }
 
     private function pendienteMaduro(Incidencia $incidencia): bool

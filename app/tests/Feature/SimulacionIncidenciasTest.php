@@ -61,6 +61,38 @@ class SimulacionIncidenciasTest extends TestCase
         $this->assertDatabaseCount('historial_estado_incidencia', 3);
     }
 
+    public function test_la_revision_nunca_cancela_si_las_canceladas_superarian_el_10_por_ciento(): void
+    {
+        // 9 en proceso + 1 cancelada = 10 en total: una cancelación más daría 2/10 = 20 %.
+        $this->crearIncidenciasEnEstado(Incidencia::ESTADO_EN_PROCESO, 9);
+        $this->crearIncidenciasEnEstado(Incidencia::ESTADO_CANCELADA, 1);
+
+        $simulador = $this->sorteoDeRevision();
+
+        for ($i = 0; $i < 300; $i++) {
+            $this->assertTrue($simulador->sortear(), 'Con el tope superado la revisión sólo puede confirmar.');
+        }
+    }
+
+    public function test_la_revision_cancela_pocas_veces_cuando_hay_margen_bajo_el_tope(): void
+    {
+        // 20 incidencias y ninguna cancelada: cancelar una daría 1/20 = 5 % (<= 10 %).
+        $this->crearIncidenciasEnEstado(Incidencia::ESTADO_EN_PROCESO, 20);
+
+        $simulador = $this->sorteoDeRevision();
+        $cancelaciones = 0;
+
+        for ($i = 0; $i < 1000; $i++) {
+            if (! $simulador->sortear()) {
+                $cancelaciones++;
+            }
+        }
+
+        // Esperado ~10 % (100 de 1000): se admite cualquier valor lejos del 30 % anterior.
+        $this->assertGreaterThan(0, $cancelaciones);
+        $this->assertLessThan(200, $cancelaciones);
+    }
+
     public function test_una_incidencia_no_resuelta_permanece_en_proceso(): void
     {
         $incidencia = $this->crearEnProceso();
@@ -98,6 +130,37 @@ class SimulacionIncidenciasTest extends TestCase
         $this->assertSame(1, app(SimuladorAsignaciones::class)->ejecutar());
 
         return $incidencia->fresh();
+    }
+
+    private function crearIncidenciasEnEstado(int $estado, int $cantidad): void
+    {
+        $socio = Usuario::where('id_rol', Usuario::ROL_SOCIO)->firstOrFail();
+
+        for ($i = 0; $i < $cantidad; $i++) {
+            Incidencia::create([
+                'id_usuario' => $socio->id,
+                'id_usuario_alta' => $socio->id,
+                'id_tipo_incidencia' => 1,
+                'id_ubicacion' => 1,
+                'id_estado_incidencia' => $estado,
+                'id_criticidad' => Incidencia::CRITICIDAD_NORMAL,
+                'descripcion' => 'Incidencia de prueba '.$i,
+                'fecha_hora_evento' => now()->subHour(),
+                'fecha_hora_alta' => now(),
+            ]);
+        }
+    }
+
+    /** Expone el sorteo real (protegido) de la revisión, sin mockearlo. */
+    private function sorteoDeRevision(): SimuladorRevisionPendientes
+    {
+        return new class extends SimuladorRevisionPendientes
+        {
+            public function sortear(): bool
+            {
+                return $this->debeConfirmar();
+            }
+        };
     }
 
     private function revision(bool $confirmar): SimuladorRevisionPendientes

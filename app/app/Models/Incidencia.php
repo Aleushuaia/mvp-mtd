@@ -43,6 +43,18 @@ class Incidencia extends Model
     /** Criticidad por defecto de una incidencia nueva. */
     public const CRITICIDAD_NORMAL = 1;
 
+    /**
+     * Vocales acentuadas (y con diéresis) y su letra base, para la búsqueda
+     * por descripción. Se listan ambas capitalizaciones porque LOWER() de la
+     * base puede no plegar letras no ASCII según su configuración regional.
+     *
+     * @var array<string, string>
+     */
+    private const EQUIVALENCIAS_SIN_ACENTO = [
+        'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u',
+        'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ü' => 'U',
+    ];
+
     public function tipo(): BelongsTo
     {
         return $this->belongsTo(TipoIncidencia::class, 'id_tipo_incidencia');
@@ -134,11 +146,34 @@ class Incidencia extends Model
             $estados = [self::ESTADO_EN_PROCESO];
         }
 
+        $descripcion = trim((string) ($filtros['descripcion'] ?? ''));
+
         return $query
             ->when(filled($filtros['numero'] ?? null),
                 fn (Builder $q) => $q->where('id_incidencia', (int) $filtros['numero']))
-            ->when(filled($filtros['descripcion'] ?? null),
-                fn (Builder $q) => $q->where('descripcion', 'ilike', '%'.trim((string) $filtros['descripcion']).'%'))
+            ->when($descripcion !== '', fn (Builder $q) => $this->buscarDescripcion($q, $descripcion))
             ->whereIn('id_estado_incidencia', $estados);
+    }
+
+    /**
+     * Búsqueda por texto en la descripción que no distingue mayúsculas de
+     * minúsculas ni vocales con o sin acento ("Pérdida" == "perdida").
+     *
+     * Se normaliza igual el texto buscado (PHP) y la columna (SQL) con
+     * REPLACE anidados + LOWER, que funcionan igual en PostgreSQL y SQLite
+     * sin depender de la extensión `unaccent` ni de la configuración regional
+     * de la base. La ñ se conserva: es otra letra, no una vocal acentuada.
+     */
+    private function buscarDescripcion(Builder $query, string $texto): Builder
+    {
+        $columna = $this->getTable().'.descripcion';
+
+        foreach (self::EQUIVALENCIAS_SIN_ACENTO as $conAcento => $sinAcento) {
+            $columna = "REPLACE({$columna}, '{$conAcento}', '{$sinAcento}')";
+        }
+
+        $texto = mb_strtolower(strtr($texto, self::EQUIVALENCIAS_SIN_ACENTO));
+
+        return $query->whereRaw("LOWER({$columna}) LIKE ?", ['%'.$texto.'%']);
     }
 }

@@ -50,12 +50,9 @@ class IncidenciaController extends Controller
 
         $estados = EstadoIncidencia::orderBy('id_estado')->get();
 
+        // Sin filtro explícito de estado, el scope `filtrar` aplica el
+        // predeterminado (En proceso): no se trae todo el historial al entrar.
         $filtros = $request->only(['numero', 'descripcion', 'estado']);
-        // "Mis incidencias" abre con "Todos" tildado: sin filtro explícito
-        // de estado se muestran las incidencias en cualquier estado.
-        if (! $request->has('estado')) {
-            $filtros['estado'] = $estados->pluck('id_estado')->all();
-        }
 
         $incidencias = Incidencia::with(['tipo', 'ubicacion', 'estado', 'criticidad', 'responsables.usuario'])
             ->where('id_usuario', $socioId)

@@ -25,25 +25,106 @@ class FiltrosIncidenciasTest extends TestCase
         ]]);
     }
 
-    public function test_por_defecto_muestra_todas_las_incidencias_con_todos_tildado(): void
+    public function test_por_defecto_muestra_solo_las_incidencias_en_proceso(): void
     {
         $this->crearIncidencia(Incidencia::ESTADO_EN_PROCESO, 'En proceso visible');
-        $this->crearIncidencia(Incidencia::ESTADO_PENDIENTE, 'Pendiente visible');
+        $this->crearIncidencia(Incidencia::ESTADO_PENDIENTE, 'Pendiente oculta');
+        $this->crearIncidencia(Incidencia::ESTADO_CANCELADA, 'Cancelada oculta');
 
         $this->get(route('incidencias.index'))
             ->assertOk()
             ->assertSee('En proceso visible')
-            ->assertSee('Pendiente visible')
-            ->assertSee('name="estado[]"', false)
-            ->assertSee('value="4"', false)
-            ->assertSee('checked', false)
-            ->assertSee('data-estado-todos', false)
-            ->assertSee('estado-selector__opcion--todos', false)
-            ->assertDontSee('name="tipo"', false)
-            ->assertDontSee('name="ubicacion"', false)
+            ->assertDontSee('Pendiente oculta')
+            ->assertDontSee('Cancelada oculta')
+            ->assertViewHas('incidencias', fn ($incidencias) => $incidencias->count() === 1)
+            ->assertSee('1 de 3 incidencia(s) en total')
             ->assertSee('estado-selector__opcion--cancelada', false)
             ->assertSee('estado-selector__opcion--borrador', false)
-            ->assertDontSee('Elegí uno o más estados.', false);
+            ->assertDontSee('name="tipo"', false)
+            ->assertDontSee('name="ubicacion"', false);
+    }
+
+    public function test_por_defecto_solo_queda_tildado_el_estado_en_proceso(): void
+    {
+        $html = $this->get(route('incidencias.index'))->assertOk()->getContent();
+
+        $this->assertSame(1, preg_match_all('/name="estado\[\]"[^>]*\schecked[\s>]/', $html));
+        $this->assertMatchesRegularExpression(
+            '/name="estado\[\]" value="'.Incidencia::ESTADO_EN_PROCESO.'"\s*checked\b/',
+            $html
+        );
+    }
+
+    public function test_no_existe_el_boton_todos(): void
+    {
+        $this->get(route('incidencias.index'))
+            ->assertOk()
+            ->assertDontSee('<span>Todos</span>', false)
+            ->assertDontSee('estado-selector__opcion--todos', false)
+            ->assertDontSee('Seleccionar todos los estados');
+    }
+
+    public function test_limpiar_campos_restablece_estados_y_avisa(): void
+    {
+        $html = $this->get(route('incidencias.index'))
+            ->assertOk()
+            ->assertSee('data-limpiar-campos', false)
+            ->assertSee('data-restablecer-estados', false)
+            ->assertSee('data-aviso-restablecido', false)
+            ->assertSee('filtros-aviso__caja', false)
+            ->assertSee('Los campos de búsqueda fueron restablecidos.')
+            ->getContent();
+
+        // Sólo "En proceso" es el estado predeterminado al que se vuelve.
+        $this->assertSame(1, preg_match_all('/\sdata-predeterminado[\s>]/', $html));
+        $this->assertMatchesRegularExpression(
+            '/name="estado\[\]" value="'.Incidencia::ESTADO_EN_PROCESO.'"[^>]*data-predeterminado/',
+            $html
+        );
+    }
+
+    public function test_sin_incidencias_en_proceso_no_dice_que_no_tiene_incidencias(): void
+    {
+        $this->crearIncidencia(Incidencia::ESTADO_PENDIENTE, 'Pendiente oculta');
+
+        $this->get(route('incidencias.index'))
+            ->assertOk()
+            ->assertSee('Sin resultados')
+            ->assertDontSee('Todavía no tiene incidencias registradas');
+    }
+
+    public function test_la_busqueda_por_descripcion_ignora_mayusculas_y_acentos(): void
+    {
+        $this->crearIncidencia(Incidencia::ESTADO_EN_PROCESO, 'Pérdida de agua en el vestuario');
+        $this->crearIncidencia(Incidencia::ESTADO_EN_PROCESO, 'Luz quemada en el pasillo');
+
+        foreach (['perdida', 'PERDIDA', 'pérdida', 'PÉRDIDA', 'Perdida de AGUA', 'vestuário'] as $busqueda) {
+            $this->get(route('incidencias.index', ['descripcion' => $busqueda]))
+                ->assertOk()
+                ->assertSee('Pérdida de agua en el vestuario')
+                ->assertDontSee('Luz quemada en el pasillo');
+        }
+
+        // Y a la inversa: el texto guardado sin acento se encuentra buscando con acento.
+        $this->crearIncidencia(Incidencia::ESTADO_EN_PROCESO, 'Reparacion del tecnico');
+
+        $this->get(route('incidencias.index', ['descripcion' => 'reparación del técnico']))
+            ->assertOk()
+            ->assertSee('Reparacion del tecnico')
+            ->assertDontSee('Luz quemada en el pasillo');
+    }
+
+    public function test_la_busqueda_por_descripcion_conserva_la_enie_como_letra_distinta(): void
+    {
+        $this->crearIncidencia(Incidencia::ESTADO_EN_PROCESO, 'Cartel roto en la cabaña');
+
+        $this->get(route('incidencias.index', ['descripcion' => 'cabana']))
+            ->assertOk()
+            ->assertDontSee('Cartel roto en la cabaña');
+
+        $this->get(route('incidencias.index', ['descripcion' => 'cabaña']))
+            ->assertOk()
+            ->assertSee('Cartel roto en la cabaña');
     }
 
     public function test_permite_elegir_mas_de_un_estado(): void
@@ -84,15 +165,11 @@ class FiltrosIncidenciasTest extends TestCase
             ->getContent();
 
         $this->assertMatchesRegularExpression(
-            '/name="estado\[\]" value="'.Incidencia::ESTADO_EN_PROCESO.'"\s*checked>/',
+            '/name="estado\[\]" value="'.Incidencia::ESTADO_EN_PROCESO.'"\s*checked\b/',
             $html
         );
         $this->assertDoesNotMatchRegularExpression(
-            '/name="estado\[\]" value="'.Incidencia::ESTADO_CANCELADA.'"\s*checked>/',
-            $html
-        );
-        $this->assertDoesNotMatchRegularExpression(
-            '/data-estado-todos\s+checked/',
+            '/name="estado\[\]" value="'.Incidencia::ESTADO_CANCELADA.'"\s*checked\b/',
             $html
         );
     }

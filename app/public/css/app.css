@@ -769,7 +769,57 @@ small,
 
 /* ---------- Barra de filtros ---------- */
 .filtros-incidencias {
+    position: relative;
     padding: 1rem 1.15rem;
+}
+
+/* Aviso tipo modal: se superpone, centrado, sobre el panel de búsqueda y se
+   oculta solo (o al tocarlo / con Esc). */
+.filtros-aviso {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    border-radius: inherit;
+    background: rgba(15, 61, 34, .38);
+    cursor: pointer;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity .18s ease, visibility .18s ease;
+}
+
+.filtros-aviso.is-visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.filtros-aviso__caja {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    max-width: 100%;
+    padding: .9rem 1.4rem;
+    border: 1px solid var(--tr-border);
+    border-radius: 12px;
+    background: var(--tr-surface);
+    color: var(--tr-green-900);
+    font-weight: 600;
+    text-align: center;
+    box-shadow: 0 12px 34px rgba(15, 61, 34, .30);
+    transform: scale(.94);
+    transition: transform .18s ease;
+}
+
+.filtros-aviso.is-visible .filtros-aviso__caja {
+    transform: scale(1);
+}
+
+.filtros-aviso__caja .bi {
+    color: var(--tr-green-600);
+    font-size: 1.25rem;
 }
 
 .filtros-incidencias .form-label {
